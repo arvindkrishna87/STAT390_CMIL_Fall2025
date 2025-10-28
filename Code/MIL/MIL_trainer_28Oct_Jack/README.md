@@ -84,6 +84,9 @@ Contains case IDs for each split:
 - `val_cases`: Validation set case IDs
 - `test_cases`: Test set case IDs
 
+### Generated Only During Training
+- checkpoint files
+
 ### Optional: Attention Analysis (--analyze_attention)
 
 **attention_summary.txt**
@@ -94,7 +97,7 @@ Contains case IDs for each split:
 **patch_attention/ folder**
 - Top N most attended patches per slice
 - Bottom N least attended patches per slice
-- Denormalized images with attention weights
+- Images (after transformation) with attention weights
 
 **stain_attention_distribution.png**
 - Box plot showing attention distribution across stains
