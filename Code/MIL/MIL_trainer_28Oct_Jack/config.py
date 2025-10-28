@@ -8,7 +8,6 @@ from typing import Tuple
 DATA_PATHS = {
     'labels_csv': './data/case_grade_match.csv',
     'patches_dir': './data/CMIL_SP2025_Patches_Apr27',
-    'patch_dir_cache': './data/patch_dir.npy',
     'checkpoint_dir': './checkpoints'
 }
 

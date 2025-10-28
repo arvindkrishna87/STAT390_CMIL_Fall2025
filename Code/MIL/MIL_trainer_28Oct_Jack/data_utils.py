@@ -22,20 +22,12 @@ def load_labels(csv_path: str = None) -> pd.DataFrame:
     return labels
 
 
-def get_all_patch_files(patches_dir: str = None, cache_path: str = None) -> List[str]:
-    """Get list of all patch files, with optional caching"""
+def get_all_patch_files(patches_dir: str = None) -> List[str]:
+    """Get list of all patch files"""
     if patches_dir is None:
         patches_dir = DATA_PATHS['patches_dir']
-    if cache_path is None:
-        cache_path = DATA_PATHS['patch_dir_cache']
     
-    if os.path.exists(cache_path):
-        all_files = np.load(cache_path, allow_pickle=True).tolist()
-    else:
-        all_files = os.listdir(patches_dir)
-        # Optionally save cache
-        np.save(cache_path, all_files)
-    
+    all_files = os.listdir(patches_dir)
     return all_files
 
 
