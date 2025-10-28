@@ -2,7 +2,7 @@
 
 ## Overview
 
-This implementation converts the original Jupyter notebook into a clean, modular Python structure suitable for Quest. The model uses three levels of attention:
+This implementation converts the original Jupyter notebook into a modular Python structure suitable for Quest. The model uses three levels of attention:
 
 1. **Patch-level attention**: Within each stain-slice
 2. **Stain-level attention**: Across slices within each stain  
@@ -76,21 +76,13 @@ Each run creates a timestamped directory with all results:
 - `correct`: Boolean indicating correct prediction
 
 **confusion_matrix.png**
-- Visual 2x2 confusion matrix with counts
-- Labeled axes (Benign vs High-grade)
+- confusion matrix with counts for predictions on the test set
 
 **data_splits.npz**
 Contains case IDs for each split:
 - `train_cases`: Training set case IDs
 - `val_cases`: Validation set case IDs
 - `test_cases`: Test set case IDs
-
-Load with:
-```python
-import numpy as np
-splits = np.load('data_splits.npz', allow_pickle=True)
-train_cases = splits['train_cases'].tolist()
-```
 
 ### Optional: Attention Analysis (--analyze_attention)
 
