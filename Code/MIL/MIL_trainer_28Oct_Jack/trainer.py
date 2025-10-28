@@ -248,9 +248,10 @@ class MILTrainer:
             'num_samples': sample_total
         }
         
-        # Save predictions to CSV if requested
+        # Save predictions and confusion matrix if requested
         if save_predictions:
             self._save_predictions_csv(results, output_dir, checkpoint_name)
+            self._save_confusion_matrix(results, output_dir)
         
         print(f"\nTest Results:")
         print(f"Test Loss: {avg_loss:.4f}")
@@ -267,16 +268,8 @@ class MILTrainer:
         if output_dir is None:
             output_dir = DATA_PATHS['checkpoint_dir']
         
-        # Create filename based on checkpoint name
-        if checkpoint_name:
-            # Extract base name without extension
-            base_name = os.path.splitext(os.path.basename(checkpoint_name))[0]
-            csv_filename = f"{base_name}_predictions.csv"
-        else:
-            from datetime import datetime
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            csv_filename = f"predictions_{timestamp}.csv"
-        
+        # Save to run directory, not checkpoint subdirectory
+        csv_filename = "predictions.csv"
         csv_path = os.path.join(output_dir, csv_filename)
         
         # Create DataFrame with results
@@ -294,6 +287,35 @@ class MILTrainer:
         
         print(f"Predictions saved to: {csv_path}")
         return csv_path
+    
+    def _save_confusion_matrix(self, results: Dict[str, Any], output_dir: str = None):
+        """Save confusion matrix as PNG"""
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        from sklearn.metrics import confusion_matrix
+        
+        if output_dir is None:
+            output_dir = DATA_PATHS['checkpoint_dir']
+        
+        # Create confusion matrix
+        cm = confusion_matrix(results['true_labels'], results['predictions'])
+        
+        # Plot
+        plt.figure(figsize=(8, 6))
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+                   xticklabels=['Benign', 'High-grade'],
+                   yticklabels=['Benign', 'High-grade'])
+        plt.ylabel('True Label')
+        plt.xlabel('Predicted Label')
+        plt.title('Confusion Matrix - Test Set')
+        
+        # Save
+        cm_path = os.path.join(output_dir, 'confusion_matrix.png')
+        plt.savefig(cm_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"Confusion matrix saved to: {cm_path}")
+        return cm_path
 
 
 def count_patches_by_class(case_dict: Dict, label_map: Dict, split_name: str):

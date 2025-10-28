@@ -20,8 +20,9 @@ from dataset import StainBagCaseDataset, case_collate_fn, create_transforms
 from trainer import MILTrainer, count_patches_by_class
 from utils import (
     set_seed, get_device, print_data_summary, create_run_directory,
-    save_data_splits, print_model_summary, check_data_integrity
+    save_data_splits, load_data_splits, print_model_summary, check_data_integrity
 )
+from attention_analysis import analyze_attention_weights
 
 
 def parse_args():
@@ -59,6 +60,12 @@ def parse_args():
                        help='Path to checkpoint to resume from')
     parser.add_argument('--eval_only', action='store_true',
                        help='Only evaluate, do not train')
+    parser.add_argument('--analyze_attention', action='store_true',
+                       help='Perform attention analysis and visualization')
+    parser.add_argument('--attention_top_n', type=int, default=5,
+                       help='Number of top/bottom patches to visualize')
+    parser.add_argument('--load_splits', type=str, default=None,
+                       help='Path to data_splits.npz file to load existing splits')
     
     return parser.parse_args()
 
@@ -96,12 +103,27 @@ def prepare_data(args):
     print("SPLITTING DATA")
     print("-" * 40)
     
-    # Split data by case (stratified)
-    train_slices, val_slices, test_slices = split_by_case_stratified(
-        slices_by_class, random_state=args.seed
-    )
-    
-    print(f"Split sizes - Train: {len(train_slices)}, Val: {len(val_slices)}, Test: {len(test_slices)}")
+    if args.load_splits:
+        # Load existing splits
+        print(f"Loading existing splits from: {args.load_splits}")
+        splits_data = load_data_splits(args.load_splits)
+        train_cases_set = set(splits_data['train_cases'])
+        val_cases_set = set(splits_data['val_cases'])
+        test_cases_set = set(splits_data['test_cases'])
+        
+        # Map loaded case IDs back to slices
+        train_slices = [(case_id, slice_id) for (case_id, slice_id) in slice_to_class.keys() if case_id in train_cases_set]
+        val_slices = [(case_id, slice_id) for (case_id, slice_id) in slice_to_class.keys() if case_id in val_cases_set]
+        test_slices = [(case_id, slice_id) for (case_id, slice_id) in slice_to_class.keys() if case_id in test_cases_set]
+        
+        print(f"Loaded splits - Train: {len(train_slices)}, Val: {len(val_slices)}, Test: {len(test_slices)}")
+    else:
+        # Split data by case (stratified)
+        train_slices, val_slices, test_slices = split_by_case_stratified(
+            slices_by_class, random_state=args.seed
+        )
+        
+        print(f"Split sizes - Train: {len(train_slices)}, Val: {len(val_slices)}, Test: {len(test_slices)}")
     
     # Build case dictionaries
     train_case_dict, train_label_map = build_case_dict(train_slices, patches, slice_to_class)
@@ -212,11 +234,14 @@ def main():
     # Prepare data
     train_data, val_data, test_data = prepare_data(args)
     
-    # Save data splits for reproducibility
+    # Save data splits for reproducibility (unless loaded from existing)
     train_cases = list(train_data[0].keys())
     val_cases = list(val_data[0].keys())
     test_cases = list(test_data[0].keys())
-    save_data_splits(train_cases, val_cases, test_cases, run_dir)
+    if not args.load_splits:
+        save_data_splits(train_cases, val_cases, test_cases, run_dir)
+    else:
+        print(f"Using existing splits from: {args.load_splits}")
     
     # Create data loaders
     train_loader, val_loader, test_loader = create_data_loaders(train_data, val_data, test_data, args)
@@ -272,6 +297,15 @@ def main():
         checkpoint_name=args.resume if args.resume else None
     )
     
+    # Attention analysis if requested
+    if args.analyze_attention:
+        analyze_attention_weights(
+            trainer.model, 
+            test_loader, 
+            run_dir, 
+            top_n=args.attention_top_n
+        )
+    
     # Save final results
     results_path = os.path.join(run_dir, "results.txt")
     with open(results_path, 'w') as f:
@@ -281,6 +315,11 @@ def main():
         f.write(f"Number of samples: {test_results['num_samples']}\n")
         if args.resume:
             f.write(f"Checkpoint used: {args.resume}\n")
+        f.write(f"\nOutput files:\n")
+        f.write(f"- predictions.csv: Per-case predictions and probabilities\n")
+        f.write(f"- confusion_matrix.png: Visual confusion matrix\n")
+        if args.analyze_attention:
+            f.write(f"- attention_analysis/: Attention visualizations and summary\n")
     
     print(f"\nResults saved to: {run_dir}")
     print("Training completed successfully!")

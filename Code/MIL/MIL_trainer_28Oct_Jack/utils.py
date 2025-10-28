@@ -89,7 +89,21 @@ def create_run_directory(base_dir: str = "./runs") -> str:
 
 def save_data_splits(train_cases: List, val_cases: List, test_cases: List, 
                     save_dir: str = "./"):
-    """Save data splits for reproducibility"""
+    """
+    Save data splits for reproducibility
+    
+    Saves a .npz file containing the exact case IDs used in each split.
+    This allows you to:
+    - Reproduce the exact same train/val/test split
+    - Verify no data leakage between splits
+    - Compare results across different model runs
+    - Analyze which cases were in which split
+    
+    The file contains three arrays:
+    - train_cases: List of case IDs in training set
+    - val_cases: List of case IDs in validation set
+    - test_cases: List of case IDs in test set
+    """
     splits = {
         'train_cases': train_cases,
         'val_cases': val_cases,

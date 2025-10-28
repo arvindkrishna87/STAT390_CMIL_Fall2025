@@ -1,7 +1,5 @@
 # Hierarchical Attention MIL Trainer
 
-A modular implementation of Hierarchical Attention MIL.
-
 ## Overview
 
 This implementation converts the original Jupyter notebook into a clean, modular Python structure suitable for Quest. The model uses three levels of attention:
@@ -10,52 +8,104 @@ This implementation converts the original Jupyter notebook into a clean, modular
 2. **Stain-level attention**: Across slices within each stain  
 3. **Case-level attention**: Across different stains (H&E, Melan, SOX10)
 
-## Project Structure
-
-```
-MIL_trainer_28Oct_Jack/
-├── config.py          # Configuration and constants
-├── data_utils.py       # Data loading and preprocessing utilities
-├── models.py           # Model architectures (AttentionPool, HierarchicalAttnMIL)
-├── dataset.py          # Custom dataset classes and transforms
-├── trainer.py          # Training and validation logic
-├── utils.py            # Helper functions and utilities
-├── main.py             # Main training script
-├── requirements.txt    # Python dependencies
-└── README.md          # This file
-```
 
 ## Usage
 
-### Basic Training
-
+### Training with Attention Analysis
 ```bash
-python main.py
+python main.py --analyze_attention --attention_top_n 5
 ```
 
-### Advanced Usage
+### Evaluation Only
+```bash
+python main.py --eval_only --resume /path/to/checkpoint.pth --analyze_attention
+```
 
+### Using Existing Data Splits
+```bash
+python main.py --load_splits ./runs/run_20241028_143022/data_splits.npz
+```
+
+### Advanced Options
 ```bash
 python main.py \
     --epochs 10 \
     --lr 1e-4 \
     --embed_dim 512 \
     --per_slice_cap 800 \
-    --patches_dir /path/to/patches \
-    --labels_csv /path/to/labels.csv
+    --analyze_attention \
+    --attention_top_n 10 \
+    --load_splits /path/to/data_splits.npz
 ```
 
-### Resume Training
+## Output Structure
 
-```bash
-python main.py --resume /path/to/checkpoint.pth
+Each run creates a timestamped directory with all results:
+
+```
+./runs/run_YYYYMMDD_HHMMSS/
+├── results.txt                    # Summary metrics
+├── predictions.csv                # Per-case predictions
+├── confusion_matrix.png           # Visual confusion matrix
+├── data_splits.npz                # Case IDs for reproducibility
+├── checkpoints/                   # Model weights
+│   └── *.pth                      # If not --eval_only
+└── attention_analysis/            # (if --analyze_attention)
+    ├── attention_summary.txt
+    ├── stain_attention_distribution.png
+    └── patch_attention/
+        ├── case_*_*_slice*_top_patches.png
+        └── case_*_*_slice*_bottom_patches.png
 ```
 
-### Evaluation Only
+## Output Files
 
-```bash
-python main.py --eval_only --resume /path/to/checkpoint.pth
+### Always Generated
+
+**results.txt**
+- Test loss and accuracy
+- Number of samples
+- Checkpoint information
+
+**predictions.csv**
+- `case_id`: Case identifier
+- `true_label`: Ground truth (0=benign, 1=high-grade)
+- `predicted_label`: Model prediction
+- `prob_benign`: Probability for benign class
+- `prob_high_grade`: Probability for high-grade class
+- `correct`: Boolean indicating correct prediction
+
+**confusion_matrix.png**
+- Visual 2x2 confusion matrix with counts
+- Labeled axes (Benign vs High-grade)
+
+**data_splits.npz**
+Contains case IDs for each split:
+- `train_cases`: Training set case IDs
+- `val_cases`: Validation set case IDs
+- `test_cases`: Test set case IDs
+
+Load with:
+```python
+import numpy as np
+splits = np.load('data_splits.npz', allow_pickle=True)
+train_cases = splits['train_cases'].tolist()
 ```
+
+### Optional: Attention Analysis (--analyze_attention)
+
+**attention_summary.txt**
+- Most attended stain per case
+- Stain-level attention weights
+- Slice-level attention patterns
+
+**patch_attention/ folder**
+- Top N most attended patches per slice
+- Bottom N least attended patches per slice
+- Denormalized images with attention weights
+
+**stain_attention_distribution.png**
+- Box plot showing attention distribution across stains
 
 ## Data Format
 
@@ -63,3 +113,18 @@ The model expects:
 - **Patches**: PNG images organized by case and stain
 - **Labels CSV**: Case IDs with corresponding class labels
 - **Naming Convention**: `case_{case_id}_{slice_id}_{stain}_patch{n}.png`
+
+## Project Structure
+
+```
+MIL_trainer_28Oct_Jack/
+├── config.py              # Configuration and paths
+├── data_utils.py          # Data loading and preprocessing
+├── models.py              # Model architectures
+├── dataset.py             # Dataset classes and transforms
+├── trainer.py             # Training and validation logic
+├── attention_analysis.py  # Attention visualization
+├── utils.py               # Helper functions
+├── main.py                # Main training script
+└── requirements.txt       # Dependencies
+```
