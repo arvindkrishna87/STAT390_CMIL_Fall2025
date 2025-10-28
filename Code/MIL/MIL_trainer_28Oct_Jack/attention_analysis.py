@@ -8,6 +8,8 @@ from typing import Dict, List, Any, Tuple
 from PIL import Image
 import torch
 
+from config import IMAGE_CONFIG
+
 
 def analyze_attention_weights(model, test_loader, output_dir: str, top_n: int = 5):
     """
@@ -156,9 +158,9 @@ def visualize_patch_attention(case_id: Any, stain: str, slice_idx: int,
         # Get patch image (C, H, W) -> (H, W, C)
         patch_img = slice_tensor[idx].cpu().numpy().transpose(1, 2, 0)
         
-        # Denormalize (assuming ImageNet normalization)
-        mean = np.array([0.485, 0.456, 0.406])
-        std = np.array([0.229, 0.224, 0.225])
+        # Denormalize using image normalization constants from config
+        mean = np.array(IMAGE_CONFIG['normalize_mean'])
+        std = np.array(IMAGE_CONFIG['normalize_std'])
         patch_img = patch_img * std + mean
         patch_img = np.clip(patch_img, 0, 1)
         

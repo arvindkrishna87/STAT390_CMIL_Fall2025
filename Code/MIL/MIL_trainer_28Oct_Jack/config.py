@@ -43,8 +43,8 @@ SPLIT_CONFIG = {
 # Image preprocessing
 IMAGE_CONFIG = {
     'image_size': (224, 224),
-    'normalize_mean': [0.485, 0.456, 0.406],
-    'normalize_std': [0.229, 0.224, 0.225]
+    'normalize_mean': [0.485, 0.456, 0.406],  # DenseNet mean
+    'normalize_std': [0.229, 0.224, 0.225]   # DenseNet std
 }
 
 # Valid classes for filtering
