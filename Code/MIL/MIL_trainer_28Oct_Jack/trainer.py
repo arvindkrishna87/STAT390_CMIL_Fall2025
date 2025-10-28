@@ -137,7 +137,7 @@ class MILTrainer:
         }
         
         torch.save(checkpoint, filename)
-        print(f"✅ Checkpoint saved: {filename}")
+        print(f"Checkpoint saved: {filename}")
     
     def load_checkpoint(self, checkpoint_path: str) -> int:
         """
@@ -158,7 +158,7 @@ class MILTrainer:
             self.val_accuracies = checkpoint["val_accuracies"]
         
         epoch = checkpoint["epoch"]
-        print(f"✅ Checkpoint loaded from epoch {epoch}")
+        print(f"Checkpoint loaded from epoch {epoch}")
         return epoch
     
     def train(self, train_loader: DataLoader, val_loader: DataLoader, 
@@ -188,9 +188,10 @@ class MILTrainer:
             if (epoch + 1) % save_every == 0:
                 self.save_checkpoint(epoch + 1)
         
-        print("\n✅ Training completed!")
+        print("\nTraining completed!")
     
-    def evaluate(self, test_loader: DataLoader) -> Dict[str, Any]:
+    def evaluate(self, test_loader: DataLoader, save_predictions: bool = True, 
+                 output_dir: str = None, checkpoint_name: str = None) -> Dict[str, Any]:
         """
         Evaluate model on test set
         Returns: evaluation metrics
@@ -201,10 +202,13 @@ class MILTrainer:
         sample_total = 0
         predictions = []
         true_labels = []
+        case_ids = []
+        prediction_probs = []
         
         with torch.no_grad():
             for batch in tqdm(test_loader, desc="Evaluating"):
                 case_data = batch[0]
+                case_id = case_data["case_id"]
                 stain_slices = case_data["stain_slices"]
                 label = case_data["label"].to(self.device)
                 
@@ -218,13 +222,18 @@ class MILTrainer:
                 loss = self.criterion(outputs, label)
                 test_loss += loss.item()
                 
-                # Calculate accuracy and collect predictions
+                # Get prediction probabilities
+                probs = torch.softmax(outputs, dim=1)
                 pred = torch.argmax(outputs, dim=1)
+                
                 correct_total += (pred == label).sum().item()
                 sample_total += 1
                 
+                # Store results
+                case_ids.append(case_id)
                 predictions.append(pred.cpu().item())
                 true_labels.append(label.cpu().item())
+                prediction_probs.append(probs.cpu().numpy()[0])  # [prob_class0, prob_class1]
         
         avg_loss = test_loss / max(sample_total, 1)
         accuracy = correct_total / max(sample_total, 1)
@@ -234,15 +243,57 @@ class MILTrainer:
             'test_accuracy': accuracy,
             'predictions': predictions,
             'true_labels': true_labels,
+            'case_ids': case_ids,
+            'prediction_probs': prediction_probs,
             'num_samples': sample_total
         }
         
-        print(f"\n📊 Test Results:")
+        # Save predictions to CSV if requested
+        if save_predictions:
+            self._save_predictions_csv(results, output_dir, checkpoint_name)
+        
+        print(f"\nTest Results:")
         print(f"Test Loss: {avg_loss:.4f}")
         print(f"Test Accuracy: {accuracy:.4f}")
         print(f"Samples: {sample_total}")
         
         return results
+    
+    def _save_predictions_csv(self, results: Dict[str, Any], output_dir: str = None, 
+                             checkpoint_name: str = None):
+        """Save predictions to CSV file"""
+        import pandas as pd
+        
+        if output_dir is None:
+            output_dir = DATA_PATHS['checkpoint_dir']
+        
+        # Create filename based on checkpoint name
+        if checkpoint_name:
+            # Extract base name without extension
+            base_name = os.path.splitext(os.path.basename(checkpoint_name))[0]
+            csv_filename = f"{base_name}_predictions.csv"
+        else:
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            csv_filename = f"predictions_{timestamp}.csv"
+        
+        csv_path = os.path.join(output_dir, csv_filename)
+        
+        # Create DataFrame with results
+        df_data = {
+            'case_id': results['case_ids'],
+            'true_label': results['true_labels'],
+            'predicted_label': results['predictions'],
+            'prob_benign': [probs[0] for probs in results['prediction_probs']],
+            'prob_high_grade': [probs[1] for probs in results['prediction_probs']],
+            'correct': [t == p for t, p in zip(results['true_labels'], results['predictions'])]
+        }
+        
+        df = pd.DataFrame(df_data)
+        df.to_csv(csv_path, index=False)
+        
+        print(f"Predictions saved to: {csv_path}")
+        return csv_path
 
 
 def count_patches_by_class(case_dict: Dict, label_map: Dict, split_name: str):
@@ -266,7 +317,7 @@ def count_patches_by_class(case_dict: Dict, label_map: Dict, split_name: str):
         
         class_patch_counts[label] += total_patches
     
-    print(f"\n🧬 Patch count by class for {split_name}:")
+    print(f"\nPatch count by class for {split_name}:")
     print(f"  Benign (0):     {class_patch_counts[0]} patches")
     print(f"  High-grade (1): {class_patch_counts[1]} patches")
     

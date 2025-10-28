@@ -28,17 +28,17 @@ def set_seed(seed: int = None):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    print(f"🎲 Random seed set to {seed}")
+    print(f"Random seed set to {seed}")
 
 
 def get_device():
     """Get the best available device"""
     if torch.cuda.is_available():
         device = 'cuda'
-        print(f"🚀 Using GPU: {torch.cuda.get_device_name()}")
+        print(f"Using GPU: {torch.cuda.get_device_name()}")
     else:
         device = 'cpu'
-        print("💻 Using CPU")
+        print("Using CPU")
     
     return device
 
@@ -47,7 +47,7 @@ def print_data_summary(train_df: pd.DataFrame, val_df: pd.DataFrame, test_df: pd
     """Print comprehensive data summary"""
     all_df = pd.concat([train_df, val_df, test_df], ignore_index=True)
     
-    print("\n📊 Data Summary:")
+    print("\nData Summary:")
     print("=" * 50)
     
     # Label distribution per split
@@ -83,7 +83,7 @@ def create_run_directory(base_dir: str = "./runs") -> str:
     run_dir = os.path.join(base_dir, f"run_{timestamp}")
     os.makedirs(run_dir, exist_ok=True)
     
-    print(f"📁 Created run directory: {run_dir}")
+    print(f"Created run directory: {run_dir}")
     return run_dir
 
 
@@ -98,7 +98,7 @@ def save_data_splits(train_cases: List, val_cases: List, test_cases: List,
     
     save_path = os.path.join(save_dir, "data_splits.npz")
     np.savez(save_path, **splits)
-    print(f"💾 Data splits saved to: {save_path}")
+    print(f"Data splits saved to: {save_path}")
 
 
 def load_data_splits(load_path: str = "./data_splits.npz") -> Dict[str, List]:
@@ -113,7 +113,7 @@ def load_data_splits(load_path: str = "./data_splits.npz") -> Dict[str, List]:
         'test_cases': splits['test_cases'].tolist()
     }
     
-    print(f"📂 Data splits loaded from: {load_path}")
+    print(f"Data splits loaded from: {load_path}")
     return result
 
 
@@ -122,7 +122,7 @@ def print_model_summary(model: torch.nn.Module):
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     
-    print("\n🏗️  Model Summary:")
+    print("\nModel Summary:")
     print("=" * 50)
     print(f"Total parameters: {total_params:,}")
     print(f"Trainable parameters: {trainable_params:,}")
@@ -132,7 +132,7 @@ def print_model_summary(model: torch.nn.Module):
 
 def analyze_attention_weights(attention_weights: Dict[str, Any], case_id: Any):
     """Analyze and print attention weights for a case"""
-    print(f"\n🔍 Attention Analysis for Case {case_id}:")
+    print(f"\nAttention Analysis for Case {case_id}:")
     print("-" * 40)
     
     if 'case_weights' in attention_weights:
@@ -154,7 +154,7 @@ def analyze_attention_weights(attention_weights: Dict[str, Any], case_id: Any):
 
 def check_data_integrity(case_dict: Dict, label_map: Dict, split_name: str):
     """Check data integrity and report issues"""
-    print(f"\n🔍 Data Integrity Check for {split_name}:")
+    print(f"\nData Integrity Check for {split_name}:")
     
     issues = []
     
@@ -188,9 +188,9 @@ def check_data_integrity(case_dict: Dict, label_map: Dict, split_name: str):
         print(f"  {stain}: {count}/{total_cases} ({coverage:.1f}%)")
     
     if issues:
-        print(f"⚠️  Issues found: {', '.join(issues)}")
+        print(f"Issues found: {', '.join(issues)}")
     else:
-        print("✅ No issues found")
+        print("No issues found")
 
 
 def format_time(seconds: float) -> str:

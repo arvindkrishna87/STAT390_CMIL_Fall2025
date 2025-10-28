@@ -65,7 +65,9 @@ def parse_args():
 
 def prepare_data(args):
     """Prepare and split the data"""
-    print("🔄 Preparing data...")
+    print("=" * 60)
+    print("PREPARING DATA")
+    print("=" * 60)
     
     # Load labels
     labels = load_labels(args.labels_csv)
@@ -89,6 +91,10 @@ def prepare_data(args):
         slices_by_class[label].append(key)
     
     print(f"Class distribution: {dict((k, len(v)) for k, v in slices_by_class.items())}")
+    
+    print("\n" + "-" * 40)
+    print("SPLITTING DATA")
+    print("-" * 40)
     
     # Split data by case (stratified)
     train_slices, val_slices, test_slices = split_by_case_stratified(
@@ -128,7 +134,9 @@ def prepare_data(args):
 
 def create_data_loaders(train_data, val_data, test_data, args):
     """Create data loaders"""
-    print("🔄 Creating data loaders...")
+    print("\n" + "=" * 60)
+    print("CREATING DATA LOADERS")
+    print("=" * 60)
     
     train_case_dict, train_label_map = train_data
     val_case_dict, val_label_map = val_data
@@ -196,7 +204,9 @@ def main():
     args.checkpoint_dir = os.path.join(run_dir, "checkpoints")
     os.makedirs(args.checkpoint_dir, exist_ok=True)
     
-    print(f"🚀 Starting MIL training")
+    print("=" * 80)
+    print("HIERARCHICAL ATTENTION MIL TRAINING")
+    print("=" * 80)
     print(f"Arguments: {vars(args)}")
     
     # Prepare data
@@ -212,7 +222,9 @@ def main():
     train_loader, val_loader, test_loader = create_data_loaders(train_data, val_data, test_data, args)
     
     # Create model
-    print("🔄 Creating model...")
+    print("\n" + "=" * 60)
+    print("CREATING MODEL")
+    print("=" * 60)
     model = create_model(
         num_classes=MODEL_CONFIG['num_classes'],
         embed_dim=args.embed_dim
@@ -232,11 +244,16 @@ def main():
     
     # Resume from checkpoint if specified
     if args.resume:
+        print("\n" + "-" * 40)
+        print("LOADING CHECKPOINT")
+        print("-" * 40)
         start_epoch = trainer.load_checkpoint(args.resume)
     
     if not args.eval_only:
         # Train the model
-        print("🎯 Starting training...")
+        print("\n" + "=" * 60)
+        print("TRAINING MODEL")
+        print("=" * 60)
         trainer.train(
             train_loader=train_loader,
             val_loader=val_loader,
@@ -245,8 +262,15 @@ def main():
         )
     
     # Evaluate on test set
-    print("📊 Evaluating on test set...")
-    test_results = trainer.evaluate(test_loader)
+    print("\n" + "=" * 60)
+    print("EVALUATING MODEL")
+    print("=" * 60)
+    test_results = trainer.evaluate(
+        test_loader, 
+        save_predictions=True, 
+        output_dir=run_dir,
+        checkpoint_name=args.resume if args.resume else None
+    )
     
     # Save final results
     results_path = os.path.join(run_dir, "results.txt")
@@ -255,9 +279,11 @@ def main():
         f.write(f"Test Loss: {test_results['test_loss']:.4f}\n")
         f.write(f"Test Accuracy: {test_results['test_accuracy']:.4f}\n")
         f.write(f"Number of samples: {test_results['num_samples']}\n")
+        if args.resume:
+            f.write(f"Checkpoint used: {args.resume}\n")
     
-    print(f"📁 Results saved to: {run_dir}")
-    print("✅ Training completed successfully!")
+    print(f"\nResults saved to: {run_dir}")
+    print("Training completed successfully!")
 
 
 if __name__ == "__main__":
