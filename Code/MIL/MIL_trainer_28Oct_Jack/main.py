@@ -34,8 +34,7 @@ def parse_args():
                        help='Path to labels CSV file')
     parser.add_argument('--patches_dir', type=str, default=DATA_PATHS['patches_dir'],
                        help='Path to patches directory')
-    parser.add_argument('--checkpoint_dir', type=str, default=DATA_PATHS['checkpoint_dir'],
-                       help='Directory to save checkpoints')
+    # checkpoint_dir is now automatically set to {run_dir}/checkpoints
     
     # Training arguments
     parser.add_argument('--epochs', type=int, default=TRAINING_CONFIG['epochs'],
