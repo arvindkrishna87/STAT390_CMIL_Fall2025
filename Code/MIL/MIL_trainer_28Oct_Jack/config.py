@@ -6,9 +6,10 @@ from typing import Tuple
 
 # Data paths (adjust these for your HPC environment)
 DATA_PATHS = {
-    'labels_csv': '/projects/e32998/case_grade_match.csv',
+    'labels_csv': '/projects/e32998/MIL_training/case_grade_match.csv',
     'patches_dir': '/projects/e32998/patches',
-    'checkpoint_dir': '/projects/e32998/checkpoints'
+    'checkpoint_dir': '/projects/e32998/MIL_training/checkpoints',
+    'runs_dir': '/projects/e32998/MIL_training/runs'  # Base directory for training runs
 }
 
 # Model configuration
