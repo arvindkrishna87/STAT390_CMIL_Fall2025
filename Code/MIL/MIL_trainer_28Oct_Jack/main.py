@@ -180,14 +180,14 @@ def create_data_loaders(train_data, val_data, test_data, args):
         val_case_dict, val_label_map,
         transform=val_transform,
         per_slice_cap=args.per_slice_cap,
-        shuffle_patches=False,  # Deterministic for evaluation
+        shuffle_patches=True,  # Enable shuffling for better sampling
     )
     
     test_ds = StainBagCaseDataset(
         test_case_dict, test_label_map,
         transform=val_transform,
         per_slice_cap=args.per_slice_cap,
-        shuffle_patches=False,
+        shuffle_patches=True,  # Enable shuffling for better sampling
     )
     
     # Create data loaders
