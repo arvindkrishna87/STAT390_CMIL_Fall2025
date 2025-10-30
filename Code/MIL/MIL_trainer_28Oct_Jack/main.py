@@ -257,7 +257,7 @@ def main():
     print_model_summary(model)
     
     # Create trainer
-    trainer = MILTrainer(model, device)
+    trainer = MILTrainer(model, device, checkpoint_dir=args.checkpoint_dir)
     
     # Update trainer learning rate if different from config
     if args.lr != TRAINING_CONFIG['learning_rate']:

@@ -18,9 +18,10 @@ class MILTrainer:
     Trainer class for MIL model
     """
     
-    def __init__(self, model: nn.Module, device: str = None):
+    def __init__(self, model: nn.Module, device: str = None, checkpoint_dir: str = None):
         self.model = model
         self.device = device if device else DEVICE
+        self.checkpoint_dir = checkpoint_dir
         self.model.to(self.device)
         
         # Initialize optimizer and criterion
@@ -119,7 +120,7 @@ class MILTrainer:
         Save model checkpoint
         """
         if checkpoint_dir is None:
-            checkpoint_dir = DATA_PATHS['checkpoint_dir']
+            checkpoint_dir = self.checkpoint_dir or "./checkpoints"
         
         os.makedirs(checkpoint_dir, exist_ok=True)
         
