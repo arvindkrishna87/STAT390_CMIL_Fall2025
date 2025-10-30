@@ -167,10 +167,16 @@ def build_case_dict(slice_list: List[Tuple], patches: Dict, slice_to_class: Dict
             
         patch_paths = patches[(case_id, slice_id)]
         
-        # Extract stain from slice_id (assumes format like "match_1_h&e" or "unmatched_2_melan")
-        stain = extract_stain_from_slice_id(slice_id)
-        if stain:
-            case_dict[case_id][stain].append(patch_paths)
+        # Group patches by stain (extract stain from filenames, not slice_id)
+        stain_groups = defaultdict(list)
+        for patch_path in patch_paths:
+            stain = extract_stain_from_filename(patch_path)
+            if stain:
+                stain_groups[stain].append(patch_path)
+        
+        # Add each stain group as a separate slice
+        for stain, stain_patches in stain_groups.items():
+            case_dict[case_id][stain].append(stain_patches)
         
         # Set label for this case
         if (case_id, slice_id) in slice_to_class:
@@ -179,14 +185,14 @@ def build_case_dict(slice_list: List[Tuple], patches: Dict, slice_to_class: Dict
     return dict(case_dict), label_map
 
 
-def extract_stain_from_slice_id(slice_id: str) -> Optional[str]:
-    """Extract stain type from slice ID"""
-    slice_id_lower = slice_id.lower()
-    if 'h&e' in slice_id_lower or 'he' in slice_id_lower:
+def extract_stain_from_filename(filename: str) -> Optional[str]:
+    """Extract stain type from patch filename"""
+    filename_lower = filename.lower()
+    if 'h&e' in filename_lower or '_he_' in filename_lower:
         return 'h&e'
-    elif 'melan' in slice_id_lower:
+    elif 'melan' in filename_lower:
         return 'melan'
-    elif 'sox10' in slice_id_lower:
+    elif 'sox10' in filename_lower:
         return 'sox10'
     return None
 
