@@ -51,6 +51,8 @@ def parse_args():
                        help='Embedding dimension')
     parser.add_argument('--per_slice_cap', type=int, default=MODEL_CONFIG['per_slice_cap'],
                        help='Maximum patches per slice')
+    parser.add_argument('--max_slices_per_stain', type=int, default=MODEL_CONFIG['max_slices_per_stain'],
+                       help='Maximum slices per stain (None for unlimited)')
     
     # Other arguments
     parser.add_argument('--seed', type=int, default=TRAINING_CONFIG['random_state'],
@@ -172,6 +174,7 @@ def create_data_loaders(train_data, val_data, test_data, args):
         train_case_dict, train_label_map,
         transform=train_transform,
         per_slice_cap=args.per_slice_cap,
+        max_slices_per_stain=args.max_slices_per_stain,
         shuffle_patches=True,
     )
     
@@ -179,6 +182,7 @@ def create_data_loaders(train_data, val_data, test_data, args):
         val_case_dict, val_label_map,
         transform=val_transform,
         per_slice_cap=args.per_slice_cap,
+        max_slices_per_stain=args.max_slices_per_stain,
         shuffle_patches=True,  # Enable shuffling for better sampling
     )
     
@@ -186,6 +190,7 @@ def create_data_loaders(train_data, val_data, test_data, args):
         test_case_dict, test_label_map,
         transform=val_transform,
         per_slice_cap=args.per_slice_cap,
+        max_slices_per_stain=args.max_slices_per_stain,
         shuffle_patches=True,  # Enable shuffling for better sampling
     )
     
