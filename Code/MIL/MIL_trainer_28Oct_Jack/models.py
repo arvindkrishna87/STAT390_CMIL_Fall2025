@@ -75,70 +75,98 @@ class HierarchicalAttnMIL(nn.Module):
         # Final classifier
         self.classifier = nn.Linear(embed_dim, num_classes)
     
+    def process_single_stain(self, slice_list: List[torch.Tensor], stain_name: str, 
+                            return_attn_weights: bool = False):
+        """
+        Process a single stain sequentially to save memory
+        """
+        slice_embeddings = []
+        slice_attention_weights = []
+        
+        # Process each slice within this stain
+        for slice_tensor in slice_list:
+            # slice_tensor shape: (P, C, H, W) where P = number of patches
+            P, C, H, W = slice_tensor.shape
+            
+            # Extract features for all patches in this slice
+            with torch.no_grad():  # Don't keep gradients for feature extraction
+                patch_features = self.features(slice_tensor)  # (P, F, h, w)
+                pooled = self.pool(patch_features).view(P, -1)  # (P, 4*F)
+            
+            # Re-enable gradients for the projector and attention
+            patch_embeddings = self.patch_projector(pooled)  # (P, D)
+            
+            # Apply patch-level attention to get slice embedding
+            if return_attn_weights:
+                slice_emb, patch_weights = self.patch_attention(
+                    patch_embeddings.unsqueeze(0), return_weights=True
+                )
+                slice_attention_weights.append(patch_weights.squeeze(0).detach())
+            else:
+                slice_emb = self.patch_attention(patch_embeddings.unsqueeze(0))
+            
+            slice_embeddings.append(slice_emb.squeeze(0))  # (D,)
+            
+            # Clear intermediate tensors
+            del patch_features, pooled, patch_embeddings
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        
+        # Stack slice embeddings for this stain
+        if slice_embeddings:
+            stain_slice_embeddings = torch.stack(slice_embeddings)  # (num_slices, D)
+            
+            # Apply stain-level attention across slices
+            if return_attn_weights:
+                stain_emb, stain_weights = self.stain_attention(
+                    stain_slice_embeddings.unsqueeze(0), return_weights=True
+                )
+                stain_attention_info = {
+                    'slice_weights': stain_weights.squeeze(0).detach(),
+                    'patch_weights': slice_attention_weights
+                }
+            else:
+                stain_emb = self.stain_attention(stain_slice_embeddings.unsqueeze(0))
+                stain_attention_info = None
+            
+            # Clean up
+            del stain_slice_embeddings
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+            return stain_emb.squeeze(0).detach(), stain_attention_info
+        
+        return None, None
+
     def forward(self, stain_slices_dict: Dict[str, List[torch.Tensor]], 
                 return_attn_weights: bool = False):
         """
-        Args:
-            stain_slices_dict: {
-                "h&e": [slice1_tensor, slice2_tensor, ...],   # each slice: (P, C, H, W)
-                "melan": [slice1_tensor, slice2_tensor, ...],
-                "sox10": [slice1_tensor, slice2_tensor, ...]
-            }
-            return_attn_weights: whether to return attention weights for visualization
-        
-        Returns:
-            logits: (num_classes,) classification logits
-            all_weights: attention weights at all levels (if return_attn_weights=True)
+        Sequential stain processing to reduce memory usage
         """
-        stain_embeddings = {}
+        stain_embeddings = []
+        stain_names = []
         stain_attention_weights = {}
         
-        # Process each stain type separately
+        # Process each stain sequentially
         for stain_name, slice_list in stain_slices_dict.items():
             if not slice_list:  # Skip if no slices for this stain
                 continue
             
-            slice_embeddings = []
-            slice_attention_weights = []
+            # Process this stain completely
+            stain_emb, stain_attn_info = self.process_single_stain(
+                slice_list, stain_name, return_attn_weights
+            )
             
-            # Process each slice within this stain
-            for slice_tensor in slice_list:
-                # slice_tensor shape: (P, C, H, W) where P = number of patches
-                P, C, H, W = slice_tensor.shape
+            if stain_emb is not None:
+                stain_embeddings.append(stain_emb)
+                stain_names.append(stain_name)
                 
-                # Extract features for all patches in this slice
-                patch_features = self.features(slice_tensor)  # (P, F, h, w)
-                pooled = self.pool(patch_features).view(P, -1)  # (P, 4*F)
-                patch_embeddings = self.patch_projector(pooled)  # (P, D)
-                
-                # Apply patch-level attention to get slice embedding
-                if return_attn_weights:
-                    slice_emb, patch_weights = self.patch_attention(
-                        patch_embeddings.unsqueeze(0), return_weights=True
-                    )
-                    slice_attention_weights.append(patch_weights.squeeze(0))
-                else:
-                    slice_emb = self.patch_attention(patch_embeddings.unsqueeze(0))
-                
-                slice_embeddings.append(slice_emb.squeeze(0))  # (D,)
+                if return_attn_weights and stain_attn_info:
+                    stain_attention_weights[stain_name] = stain_attn_info
             
-            # Stack slice embeddings for this stain
-            if slice_embeddings:
-                stain_slice_embeddings = torch.stack(slice_embeddings)  # (num_slices, D)
-                
-                # Apply stain-level attention across slices
-                if return_attn_weights:
-                    stain_emb, stain_weights = self.stain_attention(
-                        stain_slice_embeddings.unsqueeze(0), return_weights=True
-                    )
-                    stain_attention_weights[stain_name] = {
-                        'slice_weights': stain_weights.squeeze(0),
-                        'patch_weights': slice_attention_weights
-                    }
-                else:
-                    stain_emb = self.stain_attention(stain_slice_embeddings.unsqueeze(0))
-                
-                stain_embeddings[stain_name] = stain_emb.squeeze(0)  # (D,)
+            # Force cleanup after each stain
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
         
         # If no stains have data, return zero logits
         if not stain_embeddings:
@@ -147,9 +175,8 @@ class HierarchicalAttnMIL(nn.Module):
                 return logits, {}
             return logits
         
-        # Stack stain embeddings for case-level attention (fusion point)
-        stain_emb_list = list(stain_embeddings.values())
-        case_stain_embeddings = torch.stack(stain_emb_list)  # (num_stains, D)
+        # Stack stain embeddings for case-level attention
+        case_stain_embeddings = torch.stack(stain_embeddings)  # (num_stains, D)
         
         # Apply case-level attention across stains
         if return_attn_weights:
@@ -160,13 +187,18 @@ class HierarchicalAttnMIL(nn.Module):
             all_weights = {
                 'case_weights': case_weights.squeeze(0),
                 'stain_weights': stain_attention_weights,
-                'stain_order': list(stain_embeddings.keys())
+                'stain_order': stain_names
             }
         else:
             case_emb = self.case_attention(case_stain_embeddings.unsqueeze(0))
         
         # Final classification
         logits = self.classifier(case_emb.squeeze(0))  # (num_classes,)
+        
+        # Final cleanup
+        del case_stain_embeddings, stain_embeddings
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         
         if return_attn_weights:
             return logits, all_weights
