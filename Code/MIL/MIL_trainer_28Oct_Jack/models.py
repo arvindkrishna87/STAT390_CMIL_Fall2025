@@ -58,8 +58,12 @@ class HierarchicalAttnMIL(nn.Module):
         if base_model is None:
             base_model = models.densenet121(pretrained=True)
         
-        # Shared feature extractor (pretrained CNN)
+        # Shared feature extractor (pretrained CNN) - FROZEN
         self.features = base_model.features
+        
+        # Freeze the pretrained feature extractor
+        for param in self.features.parameters():
+            param.requires_grad = False
         
         # Adaptive pooling to get richer features than just 1x1
         self.pool = nn.AdaptiveAvgPool2d((2, 2))
@@ -88,12 +92,12 @@ class HierarchicalAttnMIL(nn.Module):
             # slice_tensor shape: (P, C, H, W) where P = number of patches
             P, C, H, W = slice_tensor.shape
             
-            # Extract features for all patches in this slice
-            with torch.no_grad():  # Don't keep gradients for feature extraction
+            # Extract features for all patches in this slice (frozen features)
+            with torch.no_grad():
                 patch_features = self.features(slice_tensor)  # (P, F, h, w)
                 pooled = self.pool(patch_features).view(P, -1)  # (P, 4*F)
             
-            # Re-enable gradients for the projector and attention
+            # Only train the projector and attention modules
             patch_embeddings = self.patch_projector(pooled)  # (P, D)
             
             # Apply patch-level attention to get slice embedding

@@ -30,7 +30,9 @@ class MILTrainer:
             lr=TRAINING_CONFIG['learning_rate'],
             weight_decay=TRAINING_CONFIG['weight_decay']
         )
-        self.criterion = nn.CrossEntropyLoss()
+        # Add class weights to handle imbalance
+        class_weights = torch.tensor(TRAINING_CONFIG['class_weights'])
+        self.criterion = nn.CrossEntropyLoss(weight=class_weights)
         
         # Training history
         self.train_losses = []

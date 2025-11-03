@@ -29,7 +29,8 @@ TRAINING_CONFIG = {
     'weight_decay': 1e-5,
     'num_workers': 2,
     'pin_memory': True,
-    'random_state': 42
+    'random_state': 42,
+    'class_weights': [2.0, 1.0]  # [benign_weight, high_grade_weight] - handle class imbalance
 }
 
 # Data split configuration
