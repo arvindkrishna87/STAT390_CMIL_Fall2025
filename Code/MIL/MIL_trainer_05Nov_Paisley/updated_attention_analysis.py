@@ -23,11 +23,11 @@ from collections import defaultdict
 
 from config import IMAGE_CONFIG
 
-
 def analyze_attention_weights(model, test_loader, output_dir: str, top_n: int = 5):
     """
-    Analyze and visualize attention weights from the model
-    
+    Analyze and visualize attention weights from the model,
+    separated by high/benign grade and top/bottom attention.
+
     Args:
         model: Trained MIL model
         test_loader: Test data loader
@@ -35,203 +35,301 @@ def analyze_attention_weights(model, test_loader, output_dir: str, top_n: int = 
         top_n: Number of top/bottom patches to visualize
     """
     print("\n" + "=" * 60)
-    print("ATTENTION ANALYSIS")
+    print("ATTENTION ANALYSIS (Separated by Grade & Attention Rank)")
     print("=" * 60)
-    
+
     attention_dir = os.path.join(output_dir, "attention_analysis")
     os.makedirs(attention_dir, exist_ok=True)
-    
+
     model.eval()
     attention_summary = []
-    
-    # NEW: Collect all patch data for cross-case analysis
-    all_patches_data = []
-    
+    all_patches_data = []  # collect all patch-level data
+
     with torch.no_grad():
         for batch in test_loader:
             case_data = batch[0]
             case_id = case_data["case_id"]
             stain_slices = case_data["stain_slices"]
-            label = case_data["label"]  # NEW: Get the label
-            
-            # Get predictions with attention weights
+            label = case_data["label"]
+
+            # Forward pass with attention weights
             logits, attention_weights = model(stain_slices, return_attn_weights=True)
-            
-            # Analyze this case
+
+            # Individual case summary (optional)
             case_summary = analyze_case_attention(
-                case_id, stain_slices, attention_weights, 
-                attention_dir, top_n
+                case_id, stain_slices, attention_weights, attention_dir, top_n
             )
             attention_summary.append(case_summary)
-            
-            # NEW: Collect patch data for grade-based analysis
-            case_grade = 'high' if label.item() == 1 else 'low'
+
+            # Label → grade
+            case_grade = 'high' if label.item() == 1 else 'benign'
+
+            # Collect per-patch attention data
             case_patches_data = collect_patch_data(
                 case_id, case_grade, stain_slices, attention_weights
             )
             all_patches_data.extend(case_patches_data)
+
+    # --- Organize by grade & attention rank ---
     
-    # NEW: Run grade-based analysis after processing all cases
-    if all_patches_data:
-        visualize_attention_grade_categories(all_patches_data, attention_dir, top_n)
-    
-    # Save overall summary
+    # sort patches by high grade and benign
+    high_patches = [p for p in all_patches_data if p['grade'] == 'high']
+    benign_patches = [p for p in all_patches_data if p['grade'] == 'benign']
+
+    # visualize high grade and benign 
+    visualize_ranked_attention(high_patches, "high", attention_dir, top_n)
+    visualize_ranked_attention(benign_patches, "benign", attention_dir, top_n)
+
+    # --- Save overall summary ---
     save_attention_summary(attention_summary, attention_dir)
-    
+
     print(f"Attention analysis saved to: {attention_dir}")
 
 
-# NEW FUNCTION: Collect patch data for categorization
-def collect_patch_data(case_id: str, case_grade: str, stain_slices: Dict, 
-                      attention_weights: Dict) -> List[Dict]:
+#------ Helper function -----------
+def visualize_ranked_attention(patches, grade_name: str, attention_dir: str, top_n: int):
     """
-    Collect patch data with attention weights and grades for categorization
+    Helper: Visualize top and bottom attention patches for a given grade.
+
+    Args:
+        patches: List of patch data dicts with 'attention' and 'image'
+        grade_name: 'high' or 'benign'
+        attention_dir: Output directory for saving
+        top_n: Number of patches to visualize for each group
     """
-    patches_data = []
+    # Sort patches by attention (descending)
+    patches_sorted = sorted(patches, key=lambda x: x['attention'], reverse=True)
+
+    # Split into top and bottom
+    top_patches = patches_sorted[:top_n]
+    bottom_patches = patches_sorted[-top_n:]
+
+    # Save or visualize results
+    visualize_attention_subset(
+        top_patches,
+        os.path.join(attention_dir, f"{grade_name}_grade_top_attention"),
+        title=f"{grade_name.capitalize()} Grade - Top {top_n} Attention"
+    )
+
+    visualize_attention_subset(
+        bottom_patches,
+        os.path.join(attention_dir, f"{grade_name}_grade_bottom_attention"),
+        title=f"{grade_name.capitalize()} Grade - Bottom {top_n} Attention"
+    )
+
+
+
+
+
+# ------ updated above -----------------
+# def analyze_attention_weights(model, test_loader, output_dir: str, top_n: int = 5):
+#     """
+#     Analyze and visualize attention weights from the model
     
-    if 'stain_weights' not in attention_weights:
-        return patches_data
+#     Args:
+#         model: Trained MIL model
+#         test_loader: Test data loader
+#         output_dir: Directory to save visualizations
+#         top_n: Number of top/bottom patches to visualize
+#     """
+#     print("\n" + "=" * 60)
+#     print("ATTENTION ANALYSIS")
+#     print("=" * 60)
     
-    for stain, weights_dict in attention_weights['stain_weights'].items():
-        patch_weights_list = weights_dict.get('patch_weights', [])
-        
-        for slice_idx, patch_weights in enumerate(patch_weights_list):
-            patch_weights_np = patch_weights.cpu().numpy()
-            slice_tensor = stain_slices[stain][slice_idx]
+#     attention_dir = os.path.join(output_dir, "attention_analysis")
+#     os.makedirs(attention_dir, exist_ok=True)
+    
+#     model.eval()
+#     attention_summary = []
+    
+#     # NEW: Collect all patch data for cross-case analysis
+#     all_patches_data = []
+    
+#     with torch.no_grad():
+#         for batch in test_loader:
+#             case_data = batch[0]
+#             case_id = case_data["case_id"]
+#             stain_slices = case_data["stain_slices"]
+#             label = case_data["label"]  # NEW: Get the label
             
-            for patch_idx, patch_weight in enumerate(patch_weights_np):
-                patches_data.append({
-                    'case_id': case_id,
-                    'stain': stain,
-                    'slice_idx': slice_idx,
-                    'patch_idx': patch_idx,
-                    'attention_weight': patch_weight,
-                    'grade': case_grade,
-                    'patch_tensor': slice_tensor[patch_idx].clone()
-                })
+#             # Get predictions with attention weights
+#             logits, attention_weights = model(stain_slices, return_attn_weights=True)
+            
+#             # Analyze this case
+#             case_summary = analyze_case_attention(
+#                 case_id, stain_slices, attention_weights, 
+#                 attention_dir, top_n
+#             )
+#             attention_summary.append(case_summary)
+            
+#             # NEW: Collect patch data for grade-based analysis
+#             case_grade = 'high grade' if label.item() == 1 else 'benign'
+#             case_patches_data = collect_patch_data(
+#                 case_id, case_grade, stain_slices, attention_weights
+#             )
+#             all_patches_data.extend(case_patches_data)
     
-    return patches_data
+#     # NEW: Run grade-based analysis after processing all cases
+#     if all_patches_data:
+#         visualize_attention_grade_categories(all_patches_data, attention_dir, top_n)
+    
+#     # Save overall summary
+#     save_attention_summary(attention_summary, attention_dir)
+    
+#     print(f"Attention analysis saved to: {attention_dir}")
 
 
-# NEW FUNCTION: Visualize the 4 categories
-def visualize_attention_grade_categories(patches_data: List[Dict], output_dir: str, 
-                                       patches_per_category: int = 3):
-    """
-    Visualize patches in four attention-grade categories
-    Shows 3 highest and lowest attention patches in each category
-    """
-    categories_dir = os.path.join(output_dir, "attention_grade_categories")
-    os.makedirs(categories_dir, exist_ok=True)
+# # NEW FUNCTION: Collect patch data for categorization
+# def collect_patch_data(case_id: str, case_grade: str, stain_slices: Dict, 
+#                       attention_weights: Dict) -> List[Dict]:
+#     """
+#     Collect patch data with attention weights and grades for categorization
+#     """
+#     patches_data = []
     
-    # Separate patches by grade
-    high_grade_patches = [p for p in patches_data if p['grade'] == 'high']
-    low_grade_patches = [p for p in patches_data if p['grade'] == 'low']
+#     if 'stain_weights' not in attention_weights:
+#         return patches_data
     
-    if not high_grade_patches or not low_grade_patches:
-        print("Warning: Need both high and low grade patches for categorization")
-        return
-    
-    # Calculate attention thresholds for each grade
-    high_grade_attention = [p['attention_weight'] for p in high_grade_patches]
-    low_grade_attention = [p['attention_weight'] for p in low_grade_patches]
-    
-    high_median = np.median(high_grade_attention)
-    low_median = np.median(low_grade_attention)
-    
-    # Categorize patches
-    categories = {
-        'high_attention_high_grade': [
-            p for p in high_grade_patches 
-            if p['attention_weight'] >= high_median
-        ],
-        'low_attention_high_grade': [
-            p for p in high_grade_patches 
-            if p['attention_weight'] < high_median
-        ],
-        'high_attention_low_grade': [
-            p for p in low_grade_patches 
-            if p['attention_weight'] >= low_median
-        ],
-        'low_attention_low_grade': [
-            p for p in low_grade_patches 
-            if p['attention_weight'] < low_median
-        ]
-    }
-    
-    # Visualize each category
-    for category_name, category_patches in categories.items():
-        if category_patches:
-            visualize_category_extremes(
-                category_name, category_patches, categories_dir, patches_per_category
-            )
-    
-    print(f"Grade-based categorization saved to: {categories_dir}")
-
-
-# NEW FUNCTION: Visualize extremes for each category
-def visualize_category_extremes(category_name: str, patches: List[Dict], output_dir: str,
-                              n_patches: int = 3):
-    """
-    Visualize highest and lowest attention patches for a category
-    """
-    if not patches:
-        return
-    
-    # Sort patches by attention weight
-    patches_sorted = sorted(patches, key=lambda x: x['attention_weight'])
-    
-    # Get extremes: lowest and highest attention patches
-    lowest_patches = patches_sorted[:n_patches]
-    highest_patches = patches_sorted[-n_patches:]
-    
-    # Create figure with two rows
-    fig, axes = plt.subplots(2, n_patches, figsize=(3*n_patches, 6))
-    if n_patches == 1:
-        axes = axes.reshape(2, 1)
-    
-    # Plot lowest attention patches (top row)
-    for i, patch_data in enumerate(lowest_patches):
-        patch_img = patch_data['patch_tensor'].cpu().numpy().transpose(1, 2, 0)
-        mean = np.array(IMAGE_CONFIG['normalize_mean'])
-        std = np.array(IMAGE_CONFIG['normalize_std'])
-        patch_img = patch_img * std + mean
-        patch_img = np.clip(patch_img, 0, 1)
+#     for stain, weights_dict in attention_weights['stain_weights'].items():
+#         patch_weights_list = weights_dict.get('patch_weights', [])
         
-        axes[0, i].imshow(patch_img)
-        axes[0, i].set_title(f"Attn: {patch_data['attention_weight']:.4f}", fontsize=9)
-        axes[0, i].axis('off')
+#         for slice_idx, patch_weights in enumerate(patch_weights_list):
+#             patch_weights_np = patch_weights.cpu().numpy()
+#             slice_tensor = stain_slices[stain][slice_idx]
+            
+#             for patch_idx, patch_weight in enumerate(patch_weights_np):
+#                 patches_data.append({
+#                     'case_id': case_id,
+#                     'stain': stain,
+#                     'slice_idx': slice_idx,
+#                     'patch_idx': patch_idx,
+#                     'attention_weight': patch_weight,
+#                     'grade': case_grade,
+#                     'patch_tensor': slice_tensor[patch_idx].clone()
+#                 })
     
-    # Plot highest attention patches (bottom row)
-    for i, patch_data in enumerate(highest_patches):
-        patch_img = patch_data['patch_tensor'].cpu().numpy().transpose(1, 2, 0)
-        mean = np.array(IMAGE_CONFIG['normalize_mean'])
-        std = np.array(IMAGE_CONFIG['normalize_std'])
-        patch_img = patch_img * std + mean
-        patch_img = np.clip(patch_img, 0, 1)
+#     return patches_data
+
+
+# # NEW FUNCTION: Visualize the 4 categories
+# def visualize_attention_grade_categories(patches_data: List[Dict], output_dir: str, 
+#                                        patches_per_category: int = 3):
+#     """
+#     Visualize patches in four attention-grade categories
+#     Shows 3 highest and lowest attention patches in each category
+#     """
+#     categories_dir = os.path.join(output_dir, "attention_grade_categories")
+#     os.makedirs(categories_dir, exist_ok=True)
+    
+#     # Separate patches by grade
+#     high_grade_patches = [p for p in patches_data if p['grade'] == 'high']
+#     low_grade_patches = [p for p in patches_data if p['grade'] == 'low']
+    
+#     if not high_grade_patches or not low_grade_patches:
+#         print("Warning: Need both high and low grade patches for categorization")
+#         return
+    
+#     # Calculate attention thresholds for each grade
+#     high_grade_attention = [p['attention_weight'] for p in high_grade_patches]
+#     low_grade_attention = [p['attention_weight'] for p in low_grade_patches]
+    
+#     high_median = np.median(high_grade_attention)
+#     low_median = np.median(low_grade_attention)
+    
+#     # Categorize patches
+#     categories = {
+#         'high_attention_high_grade': [
+#             p for p in high_grade_patches 
+#             if p['attention_weight'] >= high_median
+#         ],
+#         'low_attention_high_grade': [
+#             p for p in high_grade_patches 
+#             if p['attention_weight'] < high_median
+#         ],
+#         'high_attention_low_grade': [
+#             p for p in low_grade_patches 
+#             if p['attention_weight'] >= low_median
+#         ],
+#         'low_attention_low_grade': [
+#             p for p in low_grade_patches 
+#             if p['attention_weight'] < low_median
+#         ]
+#     }
+    
+#     # Visualize each category
+#     for category_name, category_patches in categories.items():
+#         if category_patches:
+#             visualize_category_extremes(
+#                 category_name, category_patches, categories_dir, patches_per_category
+#             )
+    
+#     print(f"Grade-based categorization saved to: {categories_dir}")
+
+
+# # NEW FUNCTION: Visualize extremes for each category
+# def visualize_category_extremes(category_name: str, patches: List[Dict], output_dir: str,
+#                               n_patches: int = 3):
+#     """
+#     Visualize highest and lowest attention patches for a category
+#     """
+#     if not patches:
+#         return
+    
+#     # Sort patches by attention weight
+#     patches_sorted = sorted(patches, key=lambda x: x['attention_weight'])
+    
+#     # Get extremes: lowest and highest attention patches
+#     lowest_patches = patches_sorted[:n_patches]
+#     highest_patches = patches_sorted[-n_patches:]
+    
+#     # Create figure with two rows
+#     fig, axes = plt.subplots(2, n_patches, figsize=(3*n_patches, 6))
+#     if n_patches == 1:
+#         axes = axes.reshape(2, 1)
+    
+#     # Plot lowest attention patches (top row)
+#     for i, patch_data in enumerate(lowest_patches):
+#         patch_img = patch_data['patch_tensor'].cpu().numpy().transpose(1, 2, 0)
+#         mean = np.array(IMAGE_CONFIG['normalize_mean'])
+#         std = np.array(IMAGE_CONFIG['normalize_std'])
+#         patch_img = patch_img * std + mean
+#         patch_img = np.clip(patch_img, 0, 1)
         
-        axes[1, i].imshow(patch_img)
-        axes[1, i].set_title(f"Attn: {patch_data['attention_weight']:.4f}", fontsize=9)
-        axes[1, i].axis('off')
+#         axes[0, i].imshow(patch_img)
+#         axes[0, i].set_title(f"Attn: {patch_data['attention_weight']:.4f}", fontsize=9)
+#         axes[0, i].axis('off')
     
-    # Hide unused subplots
-    for i in range(len(lowest_patches), n_patches):
-        axes[0, i].axis('off')
-    for i in range(len(highest_patches), n_patches):
-        axes[1, i].axis('off')
+#     # Plot highest attention patches (bottom row)
+#     for i, patch_data in enumerate(highest_patches):
+#         patch_img = patch_data['patch_tensor'].cpu().numpy().transpose(1, 2, 0)
+#         mean = np.array(IMAGE_CONFIG['normalize_mean'])
+#         std = np.array(IMAGE_CONFIG['normalize_std'])
+#         patch_img = patch_img * std + mean
+#         patch_img = np.clip(patch_img, 0, 1)
+        
+#         axes[1, i].imshow(patch_img)
+#         axes[1, i].set_title(f"Attn: {patch_data['attention_weight']:.4f}", fontsize=9)
+#         axes[1, i].axis('off')
     
-    # Add labels and title
-    axes[0, 0].set_ylabel('Lowest', rotation=90, fontsize=10)
-    axes[1, 0].set_ylabel('Highest', rotation=90, fontsize=10)
+#     # Hide unused subplots
+#     for i in range(len(lowest_patches), n_patches):
+#         axes[0, i].axis('off')
+#     for i in range(len(highest_patches), n_patches):
+#         axes[1, i].axis('off')
     
-    readable_name = category_name.replace('_', ' ').title()
-    plt.suptitle(f"{readable_name}\n{len(patches)} total patches", fontsize=12)
-    plt.tight_layout()
+#     # Add labels and title
+#     axes[0, 0].set_ylabel('Lowest', rotation=90, fontsize=10)
+#     axes[1, 0].set_ylabel('Highest', rotation=90, fontsize=10)
     
-    # Save
-    filename = f"{category_name}.png"
-    filepath = os.path.join(output_dir, filename)
-    plt.savefig(filepath, dpi=150, bbox_inches='tight')
-    plt.close()
+#     readable_name = category_name.replace('_', ' ').title()
+#     plt.suptitle(f"{readable_name}\n{len(patches)} total patches", fontsize=12)
+#     plt.tight_layout()
+    
+#     # Save
+#     filename = f"{category_name}.png"
+#     filepath = os.path.join(output_dir, filename)
+#     plt.savefig(filepath, dpi=150, bbox_inches='tight')
+#     plt.close()
 
 
 

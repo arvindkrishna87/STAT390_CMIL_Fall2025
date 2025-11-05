@@ -3,7 +3,7 @@
 Main training script for Hierarchical Attention MIL model
 """
 import os
-import argparse
+import argparsex
 import pandas as pd
 from torch.utils.data import DataLoader
 from collections import defaultdict
@@ -22,7 +22,8 @@ from utils import (
     set_seed, get_device, print_data_summary, create_run_directory,
     save_data_splits, load_data_splits, print_model_summary, check_data_integrity
 )
-from attention_analysis import analyze_attention_weights
+
+from updated_attention_analysis import analyze_attention_weights #, visualize_attention_grade_categories, visualize_category_extremes
 
 
 def parse_args():
@@ -304,9 +305,9 @@ def main():
     # Attention analysis if requested
     if args.analyze_attention:
         analyze_attention_weights(
-            trainer.model, 
-            test_loader, 
-            run_dir, 
+            trainer.model,
+            test_loader,
+            run_dir,
             top_n=args.attention_top_n
         )
     
