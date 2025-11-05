@@ -138,7 +138,7 @@ class HierarchicalAttnMIL(nn.Module):
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             
-            return stain_emb.squeeze(0).detach(), stain_attention_info
+            return stain_emb.squeeze(0), stain_attention_info
         
         return None, None
 
