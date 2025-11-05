@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 from PIL import Image, UnidentifiedImageError
 from typing import Dict, List, Any, Optional, Tuple
 import torchvision.transforms as transforms
-
+from skimage import color
 from config import MODEL_CONFIG, IMAGE_CONFIG
 
 
@@ -169,6 +169,7 @@ def create_transforms(is_training: bool = True) -> transforms.Compose:
         transform = transforms.Compose([
             transforms.Resize(IMAGE_CONFIG['image_size']),
             transforms.ToTensor(),
+            #RGB2ColorSpace("HED"),
             transforms.Normalize(
                 mean=IMAGE_CONFIG['normalize_mean'],
                 std=IMAGE_CONFIG['normalize_std']
@@ -176,3 +177,25 @@ def create_transforms(is_training: bool = True) -> transforms.Compose:
         ])
     
     return transform
+
+class RGB2ColorSpace:
+    def __init__(self, color_space: str = "HED"):
+        """
+        Convert RGB image tensor to a specified color space.
+        Supported spaces: "HED", "HSV", "LAB".
+        """
+        color_space = color_space.upper()
+        converters = {
+            "HED": color.rgb2hed,
+            "HSV": color.rgb2hsv,
+            "LAB": color.rgb2lab,
+        }
+        if color_space not in converters:
+            raise ValueError(f"Unsupported color space '{color_space}'. Choose from {list(converters)}.")
+        
+        self.convert = converters[color_space]
+
+    def __call__(self, img_tensor: torch.Tensor) -> torch.Tensor:
+        img_np = img_tensor.numpy().transpose(1, 2, 0)  # (H, W, 3)
+        converted = self.convert(img_np)
+        return torch.from_numpy(converted.transpose(2, 0, 1)).float()  # (3, H, W)
