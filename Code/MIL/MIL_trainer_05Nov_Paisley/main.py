@@ -3,7 +3,7 @@
 Main training script for Hierarchical Attention MIL model
 """
 import os
-import argparsex
+import argparse
 import pandas as pd
 from torch.utils.data import DataLoader
 from collections import defaultdict
