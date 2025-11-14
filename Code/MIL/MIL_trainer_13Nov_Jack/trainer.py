@@ -44,8 +44,7 @@ class MILTrainer:
                     mode='min',
                     factor=TRAINING_CONFIG.get('scheduler_factor', 0.5),
                     patience=TRAINING_CONFIG.get('scheduler_patience', 3),
-                    min_lr=TRAINING_CONFIG.get('scheduler_min_lr', 1e-6),
-                    verbose=True
+                    min_lr=TRAINING_CONFIG.get('scheduler_min_lr', 1e-6)
                 )
             elif scheduler_type == 'cosine':
                 self.scheduler = optim.lr_scheduler.CosineAnnealingLR(
