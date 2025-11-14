@@ -31,13 +31,40 @@ class MILTrainer:
             weight_decay=TRAINING_CONFIG['weight_decay']
         )
         # Add class weights to handle imbalance
-        class_weights = torch.tensor(TRAINING_CONFIG['class_weights'])
+        class_weights = torch.tensor(TRAINING_CONFIG['class_weights']).to(self.device)
         self.criterion = nn.CrossEntropyLoss(weight=class_weights)
+        
+        # Initialize learning rate scheduler
+        self.scheduler = None
+        if TRAINING_CONFIG.get('use_scheduler', False):
+            scheduler_type = TRAINING_CONFIG.get('scheduler_type', 'reduce_on_plateau')
+            if scheduler_type == 'reduce_on_plateau':
+                self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                    self.optimizer,
+                    mode='min',
+                    factor=TRAINING_CONFIG.get('scheduler_factor', 0.5),
+                    patience=TRAINING_CONFIG.get('scheduler_patience', 3),
+                    min_lr=TRAINING_CONFIG.get('scheduler_min_lr', 1e-6),
+                    verbose=True
+                )
+            elif scheduler_type == 'cosine':
+                self.scheduler = optim.lr_scheduler.CosineAnnealingLR(
+                    self.optimizer,
+                    T_max=TRAINING_CONFIG['epochs'],
+                    eta_min=TRAINING_CONFIG.get('scheduler_min_lr', 1e-6)
+                )
+        
+        # Early stopping
+        self.early_stopping_patience = TRAINING_CONFIG.get('early_stopping_patience', 7)
+        self.early_stopping_min_delta = TRAINING_CONFIG.get('early_stopping_min_delta', 0.001)
+        self.best_val_loss = float('inf')
+        self.epochs_without_improvement = 0
         
         # Training history
         self.train_losses = []
         self.val_losses = []
         self.val_accuracies = []
+        self.learning_rates = []
     
     def train_epoch(self, train_loader: DataLoader) -> float:
         """
@@ -137,7 +164,12 @@ class MILTrainer:
             "train_losses": self.train_losses,
             "val_losses": self.val_losses,
             "val_accuracies": self.val_accuracies,
+            "learning_rates": self.learning_rates,
+            "best_val_loss": self.best_val_loss,
         }
+        
+        if self.scheduler:
+            checkpoint["scheduler_state_dict"] = self.scheduler.state_dict()
         
         torch.save(checkpoint, filename)
         print(f"Checkpoint saved: {filename}")
@@ -152,6 +184,10 @@ class MILTrainer:
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         
+        # Load scheduler state if available
+        if self.scheduler and "scheduler_state_dict" in checkpoint:
+            self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        
         # Load training history if available
         if "train_losses" in checkpoint:
             self.train_losses = checkpoint["train_losses"]
@@ -159,6 +195,10 @@ class MILTrainer:
             self.val_losses = checkpoint["val_losses"]
         if "val_accuracies" in checkpoint:
             self.val_accuracies = checkpoint["val_accuracies"]
+        if "learning_rates" in checkpoint:
+            self.learning_rates = checkpoint["learning_rates"]
+        if "best_val_loss" in checkpoint:
+            self.best_val_loss = checkpoint["best_val_loss"]
         
         epoch = checkpoint["epoch"]
         print(f"Checkpoint loaded from epoch {epoch}")
@@ -167,17 +207,24 @@ class MILTrainer:
     def train(self, train_loader: DataLoader, val_loader: DataLoader, 
               epochs: int = None, start_epoch: int = 0, save_every: int = 1):
         """
-        Full training loop
+        Full training loop with learning rate scheduling and early stopping
         """
         if epochs is None:
             epochs = TRAINING_CONFIG['epochs']
         
+        use_early_stopping = TRAINING_CONFIG.get('early_stopping', False)
+        
         print(f"Starting training from epoch {start_epoch + 1} to {epochs}")
         print(f"Device: {self.device}")
         print(f"Model parameters: {sum(p.numel() for p in self.model.parameters()):,}")
+        if self.scheduler:
+            print(f"Learning rate scheduler: {type(self.scheduler).__name__}")
+        if use_early_stopping:
+            print(f"Early stopping enabled (patience={self.early_stopping_patience})")
         
         for epoch in range(start_epoch, epochs):
-            print(f"\nEpoch {epoch + 1}/{epochs}")
+            current_lr = self.optimizer.param_groups[0]['lr']
+            print(f"\nEpoch {epoch + 1}/{epochs} (LR: {current_lr:.2e})")
             
             # Train
             train_loss = self.train_epoch(train_loader)
@@ -185,11 +232,36 @@ class MILTrainer:
             # Validate
             val_loss, val_acc = self.validate(val_loader)
             
+            # Store learning rate
+            self.learning_rates.append(current_lr)
+            
             print(f"Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}")
             
-            # Save checkpoint
+            # Update learning rate scheduler
+            if self.scheduler:
+                if isinstance(self.scheduler, optim.lr_scheduler.ReduceLROnPlateau):
+                    self.scheduler.step(val_loss)
+                else:
+                    self.scheduler.step()
+            
+            # Save checkpoint periodically
             if (epoch + 1) % save_every == 0:
                 self.save_checkpoint(epoch + 1)
+            
+            # Early stopping check
+            if use_early_stopping:
+                if val_loss < (self.best_val_loss - self.early_stopping_min_delta):
+                    self.best_val_loss = val_loss
+                    self.epochs_without_improvement = 0
+                    print(f"✓ New best validation loss: {val_loss:.4f}")
+                else:
+                    self.epochs_without_improvement += 1
+                    print(f"No improvement for {self.epochs_without_improvement} epoch(s)")
+                    
+                    if self.epochs_without_improvement >= self.early_stopping_patience:
+                        print(f"\nEarly stopping triggered after {epoch + 1} epochs")
+                        print(f"Best validation loss: {self.best_val_loss:.4f}")
+                        break
         
         print("\nTraining completed!")
     
