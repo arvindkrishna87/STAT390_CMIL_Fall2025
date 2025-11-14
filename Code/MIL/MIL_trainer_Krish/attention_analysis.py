@@ -1,5 +1,5 @@
 """
-Updated attention analysis and visualization utilities, now shows all combinations of most extreme low/high grade and low/high attentions
+Attention analysis and visualization utilities
 """
 import os
 import numpy as np
@@ -7,67 +7,49 @@ import matplotlib.pyplot as plt
 from typing import Dict, List, Any, Tuple
 from PIL import Image
 import torch
-from collections import defaultdict
 
 from config import IMAGE_CONFIG
 
+
 def analyze_attention_weights(model, test_loader, output_dir: str, top_n: int = 5):
     """
-    For each case, find and visualize:
-    - Highest attention patch from highest attention stain→slice
-    - Lowest attention patch from lowest attention stain→slice  
-    Separated by grade
+    Analyze and visualize attention weights from the model
+    
+    Args:
+        model: Trained MIL model
+        test_loader: Test data loader
+        output_dir: Directory to save visualizations
+        top_n: Number of top/bottom patches to visualize
     """
     print("\n" + "=" * 60)
-    print("ATTENTION ANALYSIS (Hierarchical Extreme Patches by Case & Grade)")
+    print("ATTENTION ANALYSIS")
     print("=" * 60)
-
+    
     attention_dir = os.path.join(output_dir, "attention_analysis")
     os.makedirs(attention_dir, exist_ok=True)
-
-    model.eval()
     
-    # Store patches for each category
-    high_grade_highest_patches = []
-    high_grade_lowest_patches = []
-    benign_grade_highest_patches = [] 
-    benign_grade_lowest_patches = []
-
+    model.eval()
+    attention_summary = []
+    
     with torch.no_grad():
         for batch in test_loader:
             case_data = batch[0]
             case_id = case_data["case_id"]
             stain_slices = case_data["stain_slices"]
-            label = case_data["label"]
-
+            
             # Get predictions with attention weights
             logits, attention_weights = model(stain_slices, return_attn_weights=True)
             
-            # Get grade
-            case_grade = 'high' if label.item() == 1 else 'benign'
-            
-            # Find extreme patches following hierarchy: stain → slice → patch
-            highest_patch = find_highest_attention_patch(case_id, stain_slices, attention_weights)
-            lowest_patch = find_lowest_attention_patch(case_id, stain_slices, attention_weights)
-            
-            if highest_patch:
-                if case_grade == 'high':
-                    high_grade_highest_patches.append(highest_patch)
-                else:
-                    benign_grade_highest_patches.append(highest_patch)
-            
-            if lowest_patch:
-                if case_grade == 'high':
-                    high_grade_lowest_patches.append(lowest_patch)
-                else:
-                    benign_grade_lowest_patches.append(lowest_patch)
-
-    # Visualize each category
-    visualize_patches_category(high_grade_highest_patches, "high_grade_highest_attention", attention_dir)
-    visualize_patches_category(high_grade_lowest_patches, "high_grade_lowest_attention", attention_dir)
-    visualize_patches_category(benign_grade_highest_patches, "benign_grade_highest_attention", attention_dir) 
-    visualize_patches_category(benign_grade_lowest_patches, "benign_grade_lowest_attention", attention_dir)
-
+            # Analyze this case
+            case_summary = analyze_case_attention(
+                case_id, stain_slices, attention_weights, 
+                attention_dir, top_n
+            )
+            attention_summary.append(case_summary)
+    
+    # Save overall summary
+    save_attention_summary(attention_summary, attention_dir)
+    
     print(f"Attention analysis saved to: {attention_dir}")
 
 
@@ -277,128 +259,3 @@ def plot_attention_distribution(attention_summary: List[Dict], output_dir: str):
     plt.close()
     
     print(f"Attention distribution plot saved to: {filepath}")
-
-
-
-# newest!!
-def find_highest_attention_patch(case_id, stain_slices, attention_weights):
-    """Find highest attention patch following stain→slice→patch hierarchy"""
-    if 'case_weights' not in attention_weights:
-        return None
-    
-    # 1. Find highest attention stain
-    case_weights = attention_weights['case_weights'].cpu().numpy()
-    stain_order = attention_weights['stain_order']
-    highest_stain_idx = np.argmax(case_weights)
-    highest_stain = stain_order[highest_stain_idx]
-    
-    # 2. Find highest attention slice within that stain
-    stain_weights = attention_weights['stain_weights'][highest_stain]
-    slice_weights = stain_weights['slice_weights'].cpu().numpy()
-    highest_slice_idx = np.argmax(slice_weights)
-    
-    # 3. Find highest attention patch within that slice
-    patch_weights_list = stain_weights['patch_weights']
-    patch_weights = patch_weights_list[highest_slice_idx].cpu().numpy()
-    highest_patch_idx = np.argmax(patch_weights)
-    
-    # Get the patch tensor
-    slice_tensor = stain_slices[highest_stain][highest_slice_idx]
-    
-    return {
-        'case_id': case_id,
-        'stain': highest_stain,
-        'slice_idx': highest_slice_idx,
-        'patch_idx': highest_patch_idx,
-        'attention': patch_weights[highest_patch_idx],
-        'patch_tensor': slice_tensor[highest_patch_idx].clone()
-    }
-
-
-def find_lowest_attention_patch(case_id, stain_slices, attention_weights):
-    """Find lowest attention patch following stain→slice→patch hierarchy"""
-    if 'case_weights' not in attention_weights:
-        return None
-    
-    # 1. Find lowest attention stain
-    case_weights = attention_weights['case_weights'].cpu().numpy()
-    stain_order = attention_weights['stain_order']
-    lowest_stain_idx = np.argmin(case_weights)
-    lowest_stain = stain_order[lowest_stain_idx]
-    
-    # 2. Find lowest attention slice within that stain
-    stain_weights = attention_weights['stain_weights'][lowest_stain]
-    slice_weights = stain_weights['slice_weights'].cpu().numpy()
-    lowest_slice_idx = np.argmin(slice_weights)
-    
-    # 3. Find lowest attention patch within that slice
-    patch_weights_list = stain_weights['patch_weights']
-    patch_weights = patch_weights_list[lowest_slice_idx].cpu().numpy()
-    lowest_patch_idx = np.argmin(patch_weights)
-    
-    # Get the patch tensor
-    slice_tensor = stain_slices[lowest_stain][lowest_slice_idx]
-    
-    return {
-        'case_id': case_id,
-        'stain': lowest_stain,
-        'slice_idx': lowest_slice_idx,
-        'patch_idx': lowest_patch_idx,
-        'attention': patch_weights[lowest_patch_idx],
-        'patch_tensor': slice_tensor[lowest_patch_idx].clone()
-    }
-
-
-def visualize_patches_category(patches, category_name: str, output_dir: str):
-    """
-    Visualize all patches for a given category
-    """
-    if not patches:
-        print(f"No patches found for {category_name}")
-        return
-    
-    n_patches = len(patches)
-    n_cols = min(5, n_patches)
-    n_rows = (n_patches + n_cols - 1) // n_cols
-    
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4*n_cols, 4*n_rows))
-    if n_rows == 1 and n_cols == 1:
-        axes = np.array([axes])
-    if isinstance(axes, np.ndarray):
-        axes = axes.flatten()
-    else:
-        axes = [axes]
-    
-    for i, patch_data in enumerate(patches):
-        if i >= len(axes):
-            break
-            
-        # Process patch image
-        patch_img = patch_data['patch_tensor'].cpu().numpy().transpose(1, 2, 0)
-        mean = np.array(IMAGE_CONFIG['normalize_mean'])
-        std = np.array(IMAGE_CONFIG['normalize_std'])
-        patch_img = patch_img * std + mean
-        patch_img = np.clip(patch_img, 0, 1)
-        
-        axes[i].imshow(patch_img)
-        title = (f"Case: {patch_data['case_id']}\n"
-                f"Stain: {patch_data['stain']}\n"
-                f"Attn: {patch_data['attention']:.4f}")
-        axes[i].set_title(title, fontsize=8)
-        axes[i].axis('off')
-    
-    # Hide unused subplots
-    for i in range(len(patches), len(axes)):
-        axes[i].axis('off')
-    
-    plt.suptitle(f"{category_name.replace('_', ' ').title()}\n"
-                f"Total: {len(patches)} cases", fontsize=12, fontweight='bold')
-    plt.tight_layout()
-    
-    # Save
-    filename = f"{category_name}.png"
-    filepath = os.path.join(output_dir, filename)
-    plt.savefig(filepath, dpi=150, bbox_inches='tight')
-    plt.close()
-    
-    print(f"Saved {category_name}: {len(patches)} patches")
