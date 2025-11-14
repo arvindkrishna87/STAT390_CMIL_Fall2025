@@ -14,12 +14,13 @@ class AttentionPool(nn.Module):
     Attention pooling mechanism for MIL
     Pools patch-level features into single bag-level representation
     """
-    def __init__(self, input_dim: int, hidden_dim: int = 128):
+    def __init__(self, input_dim: int, hidden_dim: int = 128, dropout: float = 0.0):
         super().__init__()
         # Small neural network to compute attention scores for each patch
         self.attention = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.Tanh(),
+            nn.Dropout(dropout),
             nn.Linear(hidden_dim, 1)
         )
     
@@ -52,7 +53,7 @@ class HierarchicalAttnMIL(nn.Module):
     2. Stain-level: across slices within each stain  
     3. Case-level: across different stains
     """
-    def __init__(self, base_model=None, num_classes: int = 2, embed_dim: int = 512):
+    def __init__(self, base_model=None, num_classes: int = 2, embed_dim: int = 512, dropout: float = 0.3):
         super().__init__()
         
         if base_model is None:
@@ -68,16 +69,23 @@ class HierarchicalAttnMIL(nn.Module):
         # Adaptive pooling to get richer features than just 1x1
         self.pool = nn.AdaptiveAvgPool2d((2, 2))
         
-        # Patch projector: maps CNN features to patch embeddings
-        self.patch_projector = nn.Linear(base_model.classifier.in_features * 4, embed_dim)
+        # Patch projector: maps CNN features to patch embeddings with dropout
+        self.patch_projector = nn.Sequential(
+            nn.Linear(base_model.classifier.in_features * 4, embed_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout)
+        )
         
-        # Three levels of attention
-        self.patch_attention = AttentionPool(embed_dim, MODEL_CONFIG['attention_hidden_dim'])
-        self.stain_attention = AttentionPool(embed_dim, MODEL_CONFIG['attention_hidden_dim'])
-        self.case_attention = AttentionPool(embed_dim, MODEL_CONFIG['attention_hidden_dim'])
+        # Three levels of attention with dropout
+        self.patch_attention = AttentionPool(embed_dim, MODEL_CONFIG['attention_hidden_dim'], dropout=dropout)
+        self.stain_attention = AttentionPool(embed_dim, MODEL_CONFIG['attention_hidden_dim'], dropout=dropout)
+        self.case_attention = AttentionPool(embed_dim, MODEL_CONFIG['attention_hidden_dim'], dropout=dropout)
         
-        # Final classifier
-        self.classifier = nn.Linear(embed_dim, num_classes)
+        # Final classifier with dropout
+        self.classifier = nn.Sequential(
+            nn.Dropout(dropout),
+            nn.Linear(embed_dim, num_classes)
+        )
     
     def process_single_stain(self, slice_list: List[torch.Tensor], stain_name: str, 
                             return_attn_weights: bool = False):
@@ -98,7 +106,7 @@ class HierarchicalAttnMIL(nn.Module):
                 pooled = self.pool(patch_features).view(P, -1)  # (P, 4*F)
             
             # Only train the projector and attention modules
-            patch_embeddings = self.patch_projector(pooled)  # (P, D)
+            patch_embeddings = self.patch_projector(pooled)  # (P, D) - now includes ReLU and dropout
             
             # Apply patch-level attention to get slice embedding
             if return_attn_weights:
@@ -196,8 +204,8 @@ class HierarchicalAttnMIL(nn.Module):
         else:
             case_emb = self.case_attention(case_stain_embeddings.unsqueeze(0))
         
-        # Final classification
-        logits = self.classifier(case_emb.squeeze(0))  # (num_classes,)
+        # Final classification with dropout
+        logits = self.classifier(case_emb.squeeze(0))  # (num_classes,) - now includes dropout
         
         # Final cleanup
         del case_stain_embeddings, stain_embeddings
@@ -210,7 +218,7 @@ class HierarchicalAttnMIL(nn.Module):
         return logits
 
 
-def create_model(num_classes: int = None, embed_dim: int = None, pretrained: bool = True) -> HierarchicalAttnMIL:
+def create_model(num_classes: int = None, embed_dim: int = None, dropout: float = None, pretrained: bool = True) -> HierarchicalAttnMIL:
     """
     Factory function to create the MIL model
     """
@@ -218,6 +226,9 @@ def create_model(num_classes: int = None, embed_dim: int = None, pretrained: boo
         num_classes = MODEL_CONFIG['num_classes']
     if embed_dim is None:
         embed_dim = MODEL_CONFIG['embed_dim']
+    if dropout is None:
+        from config import TRAINING_CONFIG
+        dropout = TRAINING_CONFIG.get('dropout', 0.3)
     
     # Create base model
     base_model = models.densenet121(pretrained=pretrained)
@@ -226,7 +237,8 @@ def create_model(num_classes: int = None, embed_dim: int = None, pretrained: boo
     model = HierarchicalAttnMIL(
         base_model=base_model,
         num_classes=num_classes,
-        embed_dim=embed_dim
+        embed_dim=embed_dim,
+        dropout=dropout
     )
     
     return model
