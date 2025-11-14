@@ -23,14 +23,25 @@ MODEL_CONFIG = {
 
 # Training configuration
 TRAINING_CONFIG = {
-    'epochs': 20,
+    'epochs': 50,  # Increased since we have early stopping
     'batch_size': 1,  # MIL typically uses batch_size=1
-    'learning_rate': 2e-4,
-    'weight_decay': 1e-5,
+    'learning_rate': 5e-4,  # Higher initial LR, scheduler will reduce it
+    'weight_decay': 1e-4,  # Increased from 1e-5 for stronger regularization
     'num_workers': 2,
     'pin_memory': True,
     'random_state': 42,
-    'class_weights': [2.0, 1.0]  # [benign_weight, high_grade_weight] - handle class imbalance
+    'class_weights': [3.0, 1.0],  # Increased benign weight from 2.0 to 3.0
+    'dropout': 0.3,  # Add dropout for regularization
+    # Learning rate scheduler
+    'use_scheduler': True,
+    'scheduler_type': 'reduce_on_plateau',  # 'reduce_on_plateau' or 'cosine'
+    'scheduler_patience': 3,  # For ReduceLROnPlateau
+    'scheduler_factor': 0.5,  # Reduce LR by half
+    'scheduler_min_lr': 1e-6,
+    # Early stopping
+    'early_stopping': True,
+    'early_stopping_patience': 7,  # Stop if no improvement for 7 epochs
+    'early_stopping_min_delta': 0.001  # Minimum change to qualify as improvement
 }
 
 # Data split configuration
