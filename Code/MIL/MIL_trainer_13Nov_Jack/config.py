@@ -8,7 +8,7 @@ from typing import Tuple
 DATA_PATHS = {
     'labels_csv': '/projects/e32998/MIL_training/case_grade_match.csv',
     'patches_dir': '/projects/e32998/patches',
-    'runs_dir': '/projects/e32998/MIL_training/runs'  # Base directory for training runs
+    'runs_dir': '/projects/e32998/MIL_training/pres_4_runs'  # Base directory for training runs
 }
 
 # Model configuration
@@ -23,10 +23,10 @@ MODEL_CONFIG = {
 
 # Training configuration
 TRAINING_CONFIG = {
-    'epochs': 50,  # Increased since we have early stopping
+    'epochs': 60,  # Increased since we have early stopping
     'batch_size': 1,  # MIL typically uses batch_size=1
-    'learning_rate': 5e-4,  # Higher initial LR, scheduler will reduce it
-    'weight_decay': 1e-4,  # Increased from 1e-5 for stronger regularization
+    'learning_rate': 2e-4,  # Higher initial LR, scheduler will reduce it
+    'weight_decay': 5e-4,  # Increased from 1e-5 for stronger regularization
     'num_workers': 2,
     'pin_memory': True,
     'random_state': 42,
@@ -40,7 +40,7 @@ TRAINING_CONFIG = {
     'scheduler_min_lr': 1e-6,
     # Early stopping
     'early_stopping': True,
-    'early_stopping_patience': 7,  # Stop if no improvement for 7 epochs
+    'early_stopping_patience': 8,  # Stop if no improvement for 8 epochs
     'early_stopping_min_delta': 0.001  # Minimum change to qualify as improvement
 }
 
