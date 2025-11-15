@@ -254,9 +254,7 @@ class MILTrainer:
                 if val_loss < (self.best_val_loss - self.early_stopping_min_delta):
                     self.best_val_loss = val_loss
                     self.epochs_without_improvement = 0
-                    # Save best model
-                    self._save_best_model(epoch + 1, val_loss)
-                    print(f"✓ New best validation loss: {val_loss:.4f}")
+                    print(f"New best validation loss: {val_loss:.4f}")
                 else:
                     self.epochs_without_improvement += 1
                     print(f"No improvement for {self.epochs_without_improvement} epoch(s)")
