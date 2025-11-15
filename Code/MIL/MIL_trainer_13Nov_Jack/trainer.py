@@ -249,15 +249,20 @@ class MILTrainer:
             
             # Early stopping check
             if use_early_stopping:
+                min_epochs = TRAINING_CONFIG.get('early_stopping_min_epochs', 20)
+                
                 if val_loss < (self.best_val_loss - self.early_stopping_min_delta):
                     self.best_val_loss = val_loss
                     self.epochs_without_improvement = 0
-                    print(f"New best validation loss: {val_loss:.4f}")
+                    # Save best model
+                    self._save_best_model(epoch + 1, val_loss)
+                    print(f"✓ New best validation loss: {val_loss:.4f}")
                 else:
                     self.epochs_without_improvement += 1
                     print(f"No improvement for {self.epochs_without_improvement} epoch(s)")
                     
-                    if self.epochs_without_improvement >= self.early_stopping_patience:
+                    # Only trigger early stopping after minimum epochs
+                    if (epoch + 1) >= min_epochs and self.epochs_without_improvement >= self.early_stopping_patience:
                         print(f"\nEarly stopping triggered after {epoch + 1} epochs")
                         print(f"Best validation loss: {self.best_val_loss:.4f}")
                         break

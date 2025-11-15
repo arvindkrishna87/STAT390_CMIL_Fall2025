@@ -41,7 +41,8 @@ TRAINING_CONFIG = {
     # Early stopping
     'early_stopping': True,
     'early_stopping_patience': 8,  # Stop if no improvement for 8 epochs
-    'early_stopping_min_delta': 0.001  # Minimum change to qualify as improvement
+    'early_stopping_min_delta': 0.001,  # Minimum change to qualify as improvement
+    'early_stopping_min_epochs': 20  # Minimum epochs before early stopping can trigger
 }
 
 # Data split configuration
