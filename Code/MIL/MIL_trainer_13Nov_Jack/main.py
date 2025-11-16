@@ -234,6 +234,7 @@ def main():
     print("HIERARCHICAL ATTENTION MIL TRAINING")
     print("=" * 80)
     print(f"Arguments: {vars(args)}")
+    print(f"Training config (may be overridden by arguments): {TRAINING_CONFIG}")
     
     # Prepare data
     train_data, val_data, test_data = prepare_data(args)
