@@ -47,6 +47,30 @@ def analyze_attention_weights(model, test_loader, output_dir: str, top_n: int = 
             
             # Get predictions with attention weights
             logits, attention_weights = model(stain_slices, return_attn_weights=True)
+
+            # Track per-case labels/predictions for downstream summaries
+            true_label = None
+            label_tensor = case_data.get("label")
+
+            if isinstance(label_tensor, torch.Tensor):
+                true_label = int(label_tensor.detach().view(-1)[0].item())
+            else:
+                true_label = int(label_tensor)
+
+            pred_label = None
+
+            logits_for_pred = logits.detach()
+            if logits_for_pred.dim() == 1:
+                logits_for_pred = logits_for_pred.unsqueeze(0)
+            elif logits_for_pred.dim() == 0:
+                logits_for_pred = logits_for_pred.view(1, 1)
+            pred_tensor = torch.argmax(logits_for_pred, dim=1)
+            pred_label = int(pred_tensor.view(-1)[0].item())
+
+            case_label_info[case_id] = {
+                "true_label": true_label,
+                "pred_label": pred_label
+            }
             
             # Analyze this case
             case_summary = analyze_case_attention(
@@ -57,6 +81,14 @@ def analyze_attention_weights(model, test_loader, output_dir: str, top_n: int = 
 
             patch_records = compute_effective_patch_attention(case_id, attention_weights)
             all_patch_records.extend(patch_records)
+
+            visualize_case_effective_patches(
+                case_id=case_id,
+                stain_slices=stain_slices,
+                patch_records=patch_records,
+                output_dir=attention_dir,
+                top_n=top_n
+            )
     
     # Save overall summary
     save_attention_summary(attention_summary, attention_dir)
@@ -213,6 +245,84 @@ def visualize_patch_attention(case_id: Any, stain: str, slice_idx: int,
     plt.close()
 
 
+def visualize_case_effective_patches(case_id: Any,
+                                     stain_slices: Dict[str, List[torch.Tensor]],
+                                     patch_records: List[Dict[str, Any]],
+                                     output_dir: str,
+                                     top_n: int = 5):
+    """
+    Visualize the top/bottom patches across the entire case using effective attention
+    weights computed by `compute_effective_patch_attention`.
+    """
+    sorted_records = sorted(
+        patch_records,
+        key=lambda r: r.get("effective_weight", 0.0)
+    )
+
+    n_select = min(top_n, len(sorted_records))
+    top_entries = list(reversed(sorted_records[-n_select:]))
+    bottom_entries = sorted_records[:n_select]
+
+    case_effective_dir = os.path.join(output_dir, "case_effective_patches")
+    os.makedirs(case_effective_dir, exist_ok=True)
+
+    def _plot_entries(entries: List[Dict[str, Any]], title_prefix: str, filename: str):
+        n = len(entries)
+        n_cols = min(5, n)
+        n_rows = (n + n_cols - 1) // n_cols
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(3 * n_cols, 3 * n_rows))
+        if n_rows == 1 and n_cols == 1:
+            axes = np.array([axes])
+        axes = axes.flatten() if isinstance(axes, np.ndarray) else [axes]
+
+        for ax in axes:
+            ax.axis('off')
+
+        for ax, entry in zip(axes, entries):
+            stain = entry["stain"]
+            slice_idx = entry["slice_idx"]
+            patch_idx = entry["patch_idx"]
+
+            stain_slice_list = stain_slices.get(stain, [])
+            if slice_idx >= len(stain_slice_list):
+                continue
+            slice_tensor = stain_slice_list[slice_idx]
+            if patch_idx >= slice_tensor.shape[0]:
+                continue
+
+            patch_tensor = slice_tensor[patch_idx].cpu().numpy().transpose(1, 2, 0)
+
+            mean = np.array(IMAGE_CONFIG['normalize_mean'])
+            std = np.array(IMAGE_CONFIG['normalize_std'])
+            patch_img = patch_tensor * std + mean
+            patch_img = np.clip(patch_img, 0, 1)
+
+            ax.imshow(patch_img)
+            eff_weight = entry.get("effective_weight", 0.0)
+            ax.set_title(
+                f"{stain} s{slice_idx} p{patch_idx}\nEff: {eff_weight:.4f}",
+                fontsize=9
+            )
+            ax.axis('off')
+
+        plt.suptitle(f"Case {case_id} - {title_prefix} Effective Patches", fontsize=12, fontweight='bold')
+        plt.tight_layout()
+        filepath = os.path.join(case_effective_dir, filename)
+        plt.savefig(filepath, dpi=150, bbox_inches='tight')
+        plt.close()
+
+    _plot_entries(
+        top_entries,
+        title_prefix="Top",
+        filename=f"case_{case_id}_top_effective_patches.png"
+    )
+    _plot_entries(
+        bottom_entries,
+        title_prefix="Bottom",
+        filename=f"case_{case_id}_bottom_effective_patches.png"
+    )
+
+
 def save_attention_summary(attention_summary: List[Dict], output_dir: str):
     """
     Save text summary of attention analysis
@@ -248,9 +358,7 @@ def plot_attention_distribution(attention_summary: List[Dict], output_dir: str):
     """
     Plot distribution of attention across stains
     """
-    import matplotlib.pyplot as plt
-    from collections import defaultdict
-    
+
     # Aggregate stain attention across all cases
     stain_attention_agg = defaultdict(list)
     
@@ -358,7 +466,6 @@ def compute_effective_patch_attention(case_id: Any,
 
     return records
 
-from collections import defaultdict
 
 def plot_effective_patch_attention_distribution_per_case(
     patch_records: List[Dict[str, Any]],
@@ -391,8 +498,20 @@ def plot_effective_patch_attention_distribution_per_case(
         true_label = labels.get("true_label", None)
         pred_label = labels.get("pred_label", None)
 
+        counts, bin_edges = np.histogram(weights, bins=bins)
+        total_patches = counts.sum() if counts.sum() > 0 else 1
+        normalized_counts = counts / total_patches
+        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+        bin_widths = np.diff(bin_edges)
+
         plt.figure(figsize=(8, 5))
-        plt.hist(weights, bins=bins, alpha=0.75)
+        plt.bar(bin_centers, normalized_counts, width=bin_widths, alpha=0.75, align="center")
+
+        # annotate each bar with the raw count of patches contributing to it
+        for center, height, count in zip(bin_centers, normalized_counts, counts):
+            if count == 0:
+                continue
+            plt.text(center, height + 0.01, str(count), ha="center", va="bottom", fontsize=8)
 
         title = f"Case {cid} - Effective Patch Attention"
         if true_label is not None or pred_label is not None:
@@ -400,7 +519,7 @@ def plot_effective_patch_attention_distribution_per_case(
 
         plt.title(title, fontsize=13)
         plt.xlabel("Effective Patch Attention Weight", fontsize=11)
-        plt.ylabel("Number of Patches", fontsize=11)
+        plt.ylabel("Normalized Patch Density", fontsize=11)
         plt.grid(axis='y', alpha=0.3)
 
         fname = f"effective_patch_attn_distro_case_{cid}.png"
