@@ -94,7 +94,7 @@ def analyze_attention_weights(model, test_loader, output_dir: str, top_n: int = 
     save_attention_summary(attention_summary, attention_dir)
 
     # plot stain-level attention distribution on all cases 
-    plot_attention_distribution(attention_summary, attention_dir)
+    # plot_attention_distribution(attention_summary, attention_dir)
     
     # effective patch attention distributions
     plot_effective_patch_attention_distribution_per_case(
@@ -494,6 +494,7 @@ def plot_effective_patch_attention_distribution_per_case(
             continue
 
         weights = np.array(weights_list, dtype=np.float32)
+        total_patch_count = len(weights)
         labels = case_label_info.get(cid, {})
         true_label = labels.get("true_label", None)
         pred_label = labels.get("pred_label", None)
@@ -521,6 +522,15 @@ def plot_effective_patch_attention_distribution_per_case(
         plt.xlabel("Effective Patch Attention Weight", fontsize=11)
         plt.ylabel("Normalized Patch Density", fontsize=11)
         plt.grid(axis='y', alpha=0.3)
+        plt.text(
+            0.5,
+            -0.12,
+            f"Total patches: {total_patch_count}",
+            ha="center",
+            va="top",
+            transform=plt.gca().transAxes,
+            fontsize=10,
+        )
 
         fname = f"effective_patch_attn_distro_case_{cid}.png"
         filepath = os.path.join(output_dir, fname)
@@ -572,6 +582,7 @@ def analyze_top_effective_patches_per_case(
         # Extract effective weights for this case
         weights = np.array([r["effective_weight"] for r in recs], dtype=np.float32)
         num_case_patches = len(weights)
+        total_slices = len({(r["stain"], r["slice_idx"]) for r in recs})
 
         # Number of patches to keep in this case
         k = max(1, int(num_case_patches * top_percent / 100.0))
@@ -604,11 +615,18 @@ def analyze_top_effective_patches_per_case(
             stain_counts[stain] += 1
             slice_counts[(stain, slice_idx)] += 1
 
+        slice_counts_sum = sum(slice_counts.values())
+        slice_count_ratio = (
+            slice_counts_sum / total_slices if total_slices > 0 else 0.0
+        )
+
         per_case_summary[cid] = {
             "true_label": true_label,
             "pred_label": pred_label,
             "num_total_patches": num_case_patches,
             "num_top_patches": len(top_recs),
+            "num_total_slices": total_slices,
+            "top_slice_count_ratio": slice_count_ratio,
             "stain_counts": dict(stain_counts),
             "slice_counts": dict(slice_counts),
         }
@@ -649,6 +667,10 @@ def analyze_top_effective_patches_per_case(
             f.write(f"  Pred label: {info['pred_label']}\n")
             f.write(f"  # total patches: {info['num_total_patches']}\n")
             f.write(f"  # top patches (per-case): {info['num_top_patches']}\n")
+            f.write(f"  # total slices: {info['num_total_slices']}\n")
+            f.write(
+                f"  sum(slice_counts)/total_slices: {info['top_slice_count_ratio']:.4f}\n"
+            )
 
             f.write("  Top-patch counts by stain:\n")
             for stain, cnt in sorted(info["stain_counts"].items()):
