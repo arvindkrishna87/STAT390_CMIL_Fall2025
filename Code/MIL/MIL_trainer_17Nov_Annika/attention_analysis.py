@@ -39,7 +39,16 @@ def extract_patch_number_from_filename(path: str) -> Optional[int]:
 
     base = os.path.basename(path)
 
-    # 1) digits right before extension
+
+    # Prefer an explicit 'patch' token followed by digits, e.g. '..._patch0.png' or 'patch_12'
+    m = re.search(r"patch[_\-]?(\d+)", base, flags=re.IGNORECASE)
+    if m:
+        try:
+            return int(m.group(1))
+        except ValueError:
+            return None
+
+    # 1) digits right before extension (fallback)
     m = re.search(r"(\d+)(?=\.[^.]+$)", base)
     if m:
         try:
@@ -47,7 +56,7 @@ def extract_patch_number_from_filename(path: str) -> Optional[int]:
         except ValueError:
             return None
 
-    # 2) last run of digits anywhere in the basename
+    # 2) last run of digits anywhere in the basename (final fallback)
     m = re.search(r"(\d+)(?!.*\d)", base)
     if m:
         try:
@@ -136,20 +145,17 @@ def analyze_attention_weights(model, test_loader, output_dir: str, top_n: int = 
             bins = 50
         )
 
-    # Per-case patch index vs effective attention plots
-    plot_patch_attention_sequence_per_case(
-        all_patch_records,
-        case_label_info,
-        plots_dir
-    )
+    # (Per-case sequence plots removed — only per-slice plots are kept)
 
     # Per-slice plots (20 slices): patch number (x) vs effective attention (y)
+    # Select top 20 slices by total attention (sum of effective weights) by default
     plot_patch_attention_per_slice(
         all_patch_records,
         case_label_info,
         plots_dir,
         n_slices=20,
-        sampling='top'
+        sampling='top',
+        selection_method='sum'
     )
 
     # Per-case top n% patch analysis
@@ -642,91 +648,7 @@ def analyze_top_effective_patches_per_case(
     print(f"Per-case top {top_percent:.1f}% summary saved to: {summary_path}")
 
 
-def plot_patch_attention_sequence_per_case(
-    patch_records: List[Dict[str, Any]],
-    case_label_info: Dict[Any, Dict[str, int]],
-    output_dir: str,
-):
-    """
-    For each case, create a plot of patch index (x) vs effective patch attention (y).
-
-    Points are colored by stain. The ordering of patches follows the order in
-    `patch_records` (which is produced by `compute_effective_patch_attention` and
-    follows stain -> slice -> patch ordering). One PNG is saved per case.
-    """
-
-    if not patch_records:
-        print("No patch records to plot sequence plots.")
-        return
-
-    # Group records by case preserving insertion order
-    from collections import defaultdict
-
-    case_to_records: Dict[Any, List[Dict[str, Any]]] = defaultdict(list)
-    for rec in patch_records:
-        case_to_records[rec["case_id"]].append(rec)
-
-    # Color map for stains
-    import matplotlib.cm as cm
-    unique_stains = sorted({r["stain"] for r in patch_records})
-    stain_to_color = {s: cm.get_cmap('tab10')(i % 10) for i, s in enumerate(unique_stains)}
-
-    for cid, recs in case_to_records.items():
-        if not recs:
-            continue
-
-        # Y values: effective attention
-        y = np.array([r["effective_weight"] for r in recs], dtype=np.float32)
-        stains = [r["stain"] for r in recs]
-
-        # X values: prefer parsed patch_number if available, otherwise fall back to sequential index
-        patch_numbers = [r.get("patch_number") for r in recs]
-        has_numbers = any(p is not None for p in patch_numbers)
-
-        seq_x = np.arange(len(recs))
-        if has_numbers:
-            # Build x array where missing numbers use their sequential index
-            x = np.array([p if p is not None else seq for p, seq in zip(patch_numbers, seq_x)], dtype=float)
-            # For the connecting line, only connect the points which have a numeric patch number
-            valid_mask = np.array([p is not None for p in patch_numbers])
-            if valid_mask.any():
-                xv = x[valid_mask]
-                yv = y[valid_mask]
-                # sort by patch number for a sensible line
-                order = np.argsort(xv)
-                plt.plot(xv[order], yv[order], color='gray', linewidth=0.8, alpha=0.6)
-        else:
-            x = seq_x
-            plt.plot(x, y, color='gray', linewidth=0.8, alpha=0.6)
-
-        # Scatter points colored by stain (use x values computed above)
-        for stain in unique_stains:
-            mask = np.array([s == stain for s in stains])
-            if not mask.any():
-                continue
-            xs = x[mask]
-            ys = y[mask]
-            plt.scatter(xs, ys, color=stain_to_color[stain], label=stain, s=20)
-
-        # Optional labels
-        labels = case_label_info.get(cid, {})
-        title = f"Case {cid} - Patch Index vs Effective Attention"
-        if labels:
-            title += f"\nTrue: {labels.get('true_label', 'NA')}, Pred: {labels.get('pred_label', 'NA')}"
-
-        plt.title(title, fontsize=12)
-        plt.xlabel("Patch index (sequential)")
-        plt.ylabel("Effective attention weight")
-        plt.legend(loc='upper right', fontsize=8)
-        plt.grid(axis='y', alpha=0.3)
-
-        fname = f"patch_attention_sequence_case_{cid}.png"
-        filepath = os.path.join(output_dir, fname)
-        plt.tight_layout()
-        plt.savefig(filepath, dpi=200, bbox_inches='tight')
-        plt.close()
-
-    print("Per-case patch-index vs attention plots saved.")
+# per-case sequence plotting removed; per-slice plotting is used instead
 
 
 def plot_patch_attention_per_slice(
@@ -735,6 +657,7 @@ def plot_patch_attention_per_slice(
     output_dir: str,
     n_slices: int = 20,
     sampling: str = 'top',
+    selection_method: str = 'max',
 ):
     """
     Create per-slice plots (x = numeric patch number, y = effective attention).
@@ -761,11 +684,21 @@ def plot_patch_attention_per_slice(
         print('No slices found for plotting.')
         return
 
-    # Score slices for selection: use max effective attention within the slice
+    # Score slices for selection. Supported selection_method:
+    #  - 'max' : maximum effective weight within the slice
+    #  - 'sum' : sum of effective weights within the slice (total attention)
+    #  - 'mean': mean effective weight within the slice
     slice_scores = []
     for key, recs in slice_to_records.items():
-        max_eff = max(r['effective_weight'] for r in recs) if recs else 0.0
-        slice_scores.append((key, max_eff))
+        vals = [r['effective_weight'] for r in recs] if recs else [0.0]
+        if selection_method == 'sum':
+            score = float(sum(vals))
+        elif selection_method == 'mean':
+            score = float(sum(vals) / len(vals)) if vals else 0.0
+        else:
+            # default: 'max'
+            score = float(max(vals)) if vals else 0.0
+        slice_scores.append((key, score))
 
     if sampling == 'random':
         keys = list(slice_to_records.keys())
@@ -778,7 +711,31 @@ def plot_patch_attention_per_slice(
         slice_scores.sort(key=lambda x: x[1], reverse=True)
         selected = [k for k, _ in slice_scores[:n_slices]]
 
+    # Print and save a short selection summary (slice key -> score)
+    score_map = {k: s for k, s in slice_scores}
+    selected_with_scores = [(k, score_map.get(k, 0.0)) for k in selected]
+    # Sort for display by descending score
+    selected_with_scores.sort(key=lambda x: x[1], reverse=True)
+
+    print("\nSelected slices summary (key -> score):")
+    for (case_id, stain, slice_idx), score in selected_with_scores:
+        print(f"  Case {case_id} | {stain} | slice {slice_idx} -> score={score:.6f}")
+
+    # Save selection summary to a text file for reproducibility
+    try:
+        summary_path = os.path.join(output_dir, "selected_slices_summary.txt")
+        with open(summary_path, 'w') as sf:
+            sf.write("Selected slices summary (key -> score)\n")
+            sf.write("=================================\n")
+            for (case_id, stain, slice_idx), score in selected_with_scores:
+                sf.write(f"Case {case_id},{stain},slice {slice_idx},{score:.6f}\n")
+        print(f"Selection summary saved to: {summary_path}\n")
+    except Exception as e:
+        print(f"Failed to save selection summary: {e}")
+
     # Create plots for selected slices
+    # Prepare CSV rows for selected slices
+    csv_rows = []
     for key in selected:
         case_id, stain, slice_idx = key
         recs = slice_to_records[key]
@@ -824,5 +781,36 @@ def plot_patch_attention_per_slice(
         plt.tight_layout()
         plt.savefig(filepath, dpi=200, bbox_inches='tight')
         plt.close()
+
+        # Collect CSV rows for this slice
+        for r in recs:
+            csv_rows.append({
+                'case_id': case_id,
+                'stain': stain,
+                'slice_idx': slice_idx,
+                'patch_idx': r.get('patch_idx'),
+                'patch_path': r.get('patch_path'),
+                'patch_number': r.get('patch_number'),
+                'effective_weight': r.get('effective_weight'),
+                'true_label': case_label_info.get(case_id, {}).get('true_label'),
+                'pred_label': case_label_info.get(case_id, {}).get('pred_label'),
+            })
+
+    # Save CSV mapping selected slices -> patch rows for verification
+    if csv_rows:
+        csv_path = os.path.join(output_dir, "patch_attention_selected_slices.csv")
+        fieldnames = [
+            'case_id', 'stain', 'slice_idx', 'patch_idx', 'patch_path', 'patch_number',
+            'effective_weight', 'true_label', 'pred_label'
+        ]
+        try:
+            with open(csv_path, 'w', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                for row in csv_rows:
+                    writer.writerow(row)
+            print(f"Selected-slices patch CSV saved to: {csv_path}")
+        except Exception as e:
+            print(f"Failed to save CSV {csv_path}: {e}")
 
     print(f"Per-slice patch-number vs effective-attention plots saved for {len(selected)} slices.")
