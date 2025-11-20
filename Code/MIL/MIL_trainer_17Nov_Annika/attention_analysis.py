@@ -155,7 +155,8 @@ def analyze_attention_weights(model, test_loader, output_dir: str, top_n: int = 
         plots_dir,
         n_slices=20,
         sampling='top',
-        selection_method='sum'
+        selection_method='sum',
+        excluded_cases=[17, 23]
     )
 
     # Per-case top n% patch analysis
@@ -658,6 +659,7 @@ def plot_patch_attention_per_slice(
     n_slices: int = 20,
     sampling: str = 'top',
     selection_method: str = 'max',
+    excluded_cases: Optional[List[Any]] = None,
 ):
     """
     Create per-slice plots (x = numeric patch number, y = effective attention).
@@ -684,12 +686,20 @@ def plot_patch_attention_per_slice(
         print('No slices found for plotting.')
         return
 
+    # Exclude any slices that belong to excluded_cases
+    if excluded_cases is None:
+        excluded_cases = [17, 23]
+    excluded_set = set(str(x) for x in excluded_cases)
+
     # Score slices for selection. Supported selection_method:
     #  - 'max' : maximum effective weight within the slice
     #  - 'sum' : sum of effective weights within the slice (total attention)
     #  - 'mean': mean effective weight within the slice
+    # Compute scores across ALL slices (we'll select top-N first, then remove excluded cases)
+    all_keys = list(slice_to_records.keys())
     slice_scores = []
-    for key, recs in slice_to_records.items():
+    for key in all_keys:
+        recs = slice_to_records[key]
         vals = [r['effective_weight'] for r in recs] if recs else [0.0]
         if selection_method == 'sum':
             score = float(sum(vals))
@@ -701,15 +711,36 @@ def plot_patch_attention_per_slice(
         slice_scores.append((key, score))
 
     if sampling == 'random':
-        keys = list(slice_to_records.keys())
+        # Random selection: pick from all keys, then drop excluded and backfill
+        keys = all_keys
         if len(keys) <= n_slices:
-            selected = keys
+            initial_selected = keys
         else:
-            selected = random.sample(keys, n_slices)
+            initial_selected = random.sample(keys, n_slices)
     else:
-        # default: top by max effective attention
+        # default: top by selection score across all slices
         slice_scores.sort(key=lambda x: x[1], reverse=True)
-        selected = [k for k, _ in slice_scores[:n_slices]]
+        initial_selected = [k for k, _ in slice_scores[:n_slices]]
+
+    # Now remove excluded cases from the initial selection, but keep track of original top picks.
+    selected = [k for k in initial_selected if str(k[0]) not in excluded_set]
+
+    # Backfill: if we lost some slots due to exclusion, take next-best non-excluded slices
+    if len(selected) < n_slices:
+        # Build ordered list of candidates by score (descending), skipping ones already in initial_selected
+        ordered = [k for k, _ in slice_scores]
+        for cand in ordered:
+            if cand in selected or cand in initial_selected:
+                # if cand was in initial_selected but excluded, we still don't want it; skip
+                if cand in selected:
+                    continue
+                if cand in initial_selected:
+                    continue
+            if str(cand[0]) in excluded_set:
+                continue
+            selected.append(cand)
+            if len(selected) >= n_slices:
+                break
 
     # Print and save a short selection summary (slice key -> score)
     score_map = {k: s for k, s in slice_scores}
