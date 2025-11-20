@@ -615,9 +615,9 @@ def analyze_top_effective_patches_per_case(
             stain_counts[stain] += 1
             slice_counts[(stain, slice_idx)] += 1
 
-        slice_counts_sum = sum(slice_counts.values())
+        # slice_counts_sum = sum(slice_counts.values())
         slice_count_ratio = (
-            slice_counts_sum / total_slices if total_slices > 0 else 0.0
+            len(slice_counts) / total_slices if total_slices > 0 else 0.0
         )
 
         per_case_summary[cid] = {
@@ -669,7 +669,7 @@ def analyze_top_effective_patches_per_case(
             f.write(f"  # top patches (per-case): {info['num_top_patches']}\n")
             f.write(f"  # total slices: {info['num_total_slices']}\n")
             f.write(
-                f"  sum(slice_counts)/total_slices: {info['top_slice_count_ratio']:.4f}\n"
+                f"  slice ratio: {info['top_slice_count_ratio']:.4f}\n"
             )
 
             f.write("  Top-patch counts by stain:\n")
