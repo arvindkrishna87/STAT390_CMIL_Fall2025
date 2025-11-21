@@ -2,6 +2,7 @@
 Training and validation logic for MIL model
 """
 import os
+import copy
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -21,7 +22,8 @@ class MILTrainer:
     def __init__(self, model: nn.Module, device: str = None, checkpoint_dir: str = None):
         self.model = model
         self.device = device if device else DEVICE
-        self.checkpoint_dir = checkpoint_dir
+        self.checkpoint_dir = checkpoint_dir or "./checkpoints"
+        os.makedirs(self.checkpoint_dir, exist_ok=True)
         self.model.to(self.device)
         
         # Initialize optimizer and criterion
@@ -58,6 +60,10 @@ class MILTrainer:
         self.early_stopping_min_delta = TRAINING_CONFIG.get('early_stopping_min_delta', 0.001)
         self.best_val_loss = float('inf')
         self.epochs_without_improvement = 0
+        self.best_epoch = None
+        self.best_model_state = None
+        self.best_model_loaded = False
+        self.best_checkpoint_path = None
         
         # Training history
         self.train_losses = []
@@ -165,13 +171,38 @@ class MILTrainer:
             "val_accuracies": self.val_accuracies,
             "learning_rates": self.learning_rates,
             "best_val_loss": self.best_val_loss,
+            "best_epoch": self.best_epoch,
         }
+        if self.best_model_state is not None:
+            checkpoint["best_model_state_dict"] = self.best_model_state
         
         if self.scheduler:
             checkpoint["scheduler_state_dict"] = self.scheduler.state_dict()
         
         torch.save(checkpoint, filename)
         print(f"Checkpoint saved: {filename}")
+        return filename
+
+    def save_best_checkpoint(self, arch: str = "HierarchicalAttnMIL"):
+        """Persist the best-performing model snapshot to the checkpoints folder."""
+        if self.best_model_state is None or self.best_epoch is None:
+            return None
+        checkpoint_dir = self.checkpoint_dir or "./checkpoints"
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        best_filename = os.path.join(
+            checkpoint_dir,
+            f"best_epoch_{self.best_epoch}_{arch}.pth"
+        )
+        checkpoint = {
+            "arch": arch,
+            "epoch": self.best_epoch,
+            "model_state_dict": self.best_model_state,
+            "best_val_loss": self.best_val_loss,
+        }
+        torch.save(checkpoint, best_filename)
+        self.best_checkpoint_path = best_filename
+        print(f"Saved best checkpoint to: {best_filename}")
+        return best_filename
     
     def load_checkpoint(self, checkpoint_path: str) -> int:
         """
@@ -198,6 +229,13 @@ class MILTrainer:
             self.learning_rates = checkpoint["learning_rates"]
         if "best_val_loss" in checkpoint:
             self.best_val_loss = checkpoint["best_val_loss"]
+        self.best_epoch = checkpoint.get("best_epoch")
+        if "best_model_state_dict" in checkpoint:
+            self.best_model_state = checkpoint["best_model_state_dict"]
+            self.best_model_loaded = False
+        else:
+            self.best_model_state = None
+            self.best_model_loaded = False
         
         epoch = checkpoint["epoch"]
         print(f"Checkpoint loaded from epoch {epoch}")
@@ -235,6 +273,15 @@ class MILTrainer:
             self.learning_rates.append(current_lr)
             
             print(f"Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}")
+
+            prev_best = self.best_val_loss
+            is_new_best = val_loss < self.best_val_loss
+            if is_new_best:
+                self.best_val_loss = val_loss
+                self.best_epoch = epoch + 1
+                self.best_model_state = copy.deepcopy(self.model.state_dict())
+                self.best_model_loaded = False
+                print(f"-> New best epoch {self.best_epoch}: Val Loss {val_loss:.4f}, Val Acc {val_acc:.4f}")
             
             # Update learning rate scheduler
             if self.scheduler:
@@ -250,11 +297,8 @@ class MILTrainer:
             # Early stopping check
             if use_early_stopping:
                 min_epochs = TRAINING_CONFIG.get('early_stopping_min_epochs', 20)
-                
-                if val_loss < (self.best_val_loss - self.early_stopping_min_delta):
-                    self.best_val_loss = val_loss
+                if val_loss < (prev_best - self.early_stopping_min_delta):
                     self.epochs_without_improvement = 0
-                    print(f"New best validation loss: {val_loss:.4f}")
                 else:
                     self.epochs_without_improvement += 1
                     print(f"No improvement for {self.epochs_without_improvement} epoch(s)")
@@ -265,7 +309,28 @@ class MILTrainer:
                         print(f"Best validation loss: {self.best_val_loss:.4f}")
                         break
         
+        if self.best_model_state is not None and self.best_epoch is not None:
+            self.save_best_checkpoint()
+            print(f"Best epoch: {self.best_epoch} (Val Loss {self.best_val_loss:.4f})")
+        else:
+            print("No tracked best model state; falling back to final epoch weights.")
+        
         print("\nTraining completed!")
+    
+    def load_best_model(self) -> bool:
+        """Load best model weights (if available) onto the current model."""
+        if self.best_model_state is None:
+            print("No best model state recorded; using current model weights.")
+            return False
+        if self.best_model_loaded:
+            return True
+        self.model.load_state_dict(self.best_model_state)
+        self.best_model_loaded = True
+        if self.best_epoch is not None:
+            print(f"Loaded best model from epoch {self.best_epoch} (Val Loss {self.best_val_loss:.4f})")
+        else:
+            print("Loaded best model state")
+        return True
     
     def evaluate(self, test_loader: DataLoader, save_predictions: bool = True, 
                  output_dir: str = None, checkpoint_name: str = None) -> Dict[str, Any]:

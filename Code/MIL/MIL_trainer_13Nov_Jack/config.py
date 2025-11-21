@@ -25,7 +25,7 @@ MODEL_CONFIG = {
 TRAINING_CONFIG = {
     'epochs': 30,  # Increased since we have early stopping
     'batch_size': 1,  # MIL typically uses batch_size=1
-    'learning_rate': 2.5e-4,  # Higher initial LR, scheduler will reduce it
+    'learning_rate': 2e-4,  # Higher initial LR, scheduler will reduce it
     'weight_decay': 1e-5,  # Increased from 1e-5 for stronger regularization
     'num_workers': 2,
     'pin_memory': True,
