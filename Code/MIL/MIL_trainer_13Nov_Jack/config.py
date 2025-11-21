@@ -8,14 +8,14 @@ from typing import Tuple
 DATA_PATHS = {
     'labels_csv': '/projects/e32998/MIL_training/case_grade_match.csv',
     'patches_dir': '/projects/e32998/patches',
-    'runs_dir': '/projects/e32998/MIL_training/pres_4_runs'  # Base directory for training runs
+    'runs_dir': '/projects/e32998/MIL_training/pres_4_runs/cv'  # Base directory for training runs
 }
 
 # Model configuration
 MODEL_CONFIG = {
     'num_classes': 2,
-    'embed_dim': 512,
-    'attention_hidden_dim': 128,
+    'embed_dim': 128,
+    'attention_hidden_dim': 64,
     'per_slice_cap': 800,
     'max_slices_per_stain': None,
     'stains': ('h&e', 'melan', 'sox10')
@@ -25,8 +25,8 @@ MODEL_CONFIG = {
 TRAINING_CONFIG = {
     'epochs': 30,  # Increased since we have early stopping
     'batch_size': 1,  # MIL typically uses batch_size=1
-    'learning_rate': 3e-4,  # Higher initial LR, scheduler will reduce it
-    'weight_decay': 2e-4,  # Increased from 1e-5 for stronger regularization
+    'learning_rate': 2.5e-4,  # Higher initial LR, scheduler will reduce it
+    'weight_decay': 1e-5,  # Increased from 1e-5 for stronger regularization
     'num_workers': 2,
     'pin_memory': True,
     'random_state': 42,
@@ -36,7 +36,7 @@ TRAINING_CONFIG = {
     'use_scheduler': True,
     'scheduler_type': 'reduce_on_plateau',  # 'reduce_on_plateau' or 'cosine'
     'scheduler_patience': 3,  # For ReduceLROnPlateau
-    'scheduler_factor': 0.3,  # Reduce LR by half
+    'scheduler_factor': 0.5,  # Reduce LR by half
     'scheduler_min_lr': 1e-6,
     # Early stopping
     'early_stopping': True,
