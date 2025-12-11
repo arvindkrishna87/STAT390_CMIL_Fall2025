@@ -68,6 +68,12 @@ The output directory is automatically created with a timestamp in the format `..
 ## SLURM Job Management
 
 ### Submitting Jobs
+
+**Before submitting:**
+1. Update the email in the sbatch file: Replace `YOUR_NETID@u.northwestern.edu` with your actual NetID
+2. Verify the account and partition settings match your Quest allocation
+3. Modify logging directory if needed: Logs are currently set to `/projects/e32998/MIL_training/logs/` in the sbatch files
+
 The `sbatch_files/` directory contains pre-configured SLURM scripts for running training with different non-overlapping data splits:
 
 ```bash
@@ -86,12 +92,7 @@ sbatch sbatch_files/run_training_5th_splits.sbatch
 - Use **one split** for initial experimentation or single model training
 - Use **all 5 splits** for robust cross-validated results and performance evaluation
 
-When you submit a job, SLURM will return a job ID (e.g., "Submitted batch job 122345"). Note this job ID for monitoring.
-
-**Before submitting:**
-1. Update the email in the sbatch file: Replace `YOUR_NETID@u.northwestern.edu` with your actual NetID
-2. Verify the account and partition settings match your Quest allocation
-3. Modify logging directory if needed: Logs are currently set to `/projects/e32998/MIL_training/logs/` in the sbatch files
+When you submit a job, SLURM will return a job ID (e.g., "Submitted batch job 122345"). You can also get job IDs later using `squeue --me`.
 
 ### Monitoring Jobs
 ```bash
