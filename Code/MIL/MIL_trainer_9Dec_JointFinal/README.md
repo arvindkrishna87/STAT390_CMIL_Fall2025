@@ -33,10 +33,81 @@ python main.py \
     --lr 1e-4 \
     --embed_dim 512 \
     --per_slice_cap 800 \
+    --max_slices_per_stain 5 \
     --analyze_attention \
     --attention_top_n 10 \
-    --load_splits /path/to/data_splits.npz
+    --load_splits /path/to/data_splits.npz \
+    --eval_only \
+    --resume /path/to/checkpoint.pth \
+    --batch_size 32 \
+    --weight_decay 1e-5 \
+    --dropout 0.1 \
+    --patience 5 \
+    --min_delta 0.001
 ```
+
+**Key Arguments:**
+You can specify any combination of these arguments to override the defaults in `config.py`:
+- `--epochs`: Number of training epochs (default: 20)
+- `--lr`: Learning rate (default: 1e-4)
+- `--embed_dim`: Embedding dimension (default: 256)
+- `--per_slice_cap`: Max patches per slice (default: 500)
+- `--max_slices_per_stain`: Max slices per stain (default: 5)
+- `--analyze_attention`: Enable attention analysis and visualization
+- `--attention_top_n`: Number of top/bottom patches to visualize (default: 5)
+- `--load_splits`: Load existing train/val/test splits from .npz file
+- `--eval_only`: Skip training, only evaluate
+- `--resume`: Resume from checkpoint
+- `--batch_size`: Batch size (default: 16)
+- `--weight_decay`: L2 regularization (default: 1e-4)
+- `--dropout`: Dropout rate (default: 0.0)
+- `--patience`: Early stopping patience (default: 10)
+- `--min_delta`: Minimum improvement for early stopping (default: 0.01)
+
+## SLURM Job Management
+
+### Submitting Jobs
+The `sbatch_files/` directory contains pre-configured SLURM scripts for running training with different non-overlapping data splits:
+
+```bash
+# Submit a single job for one split
+sbatch sbatch_files/run_training_1st_splits.sbatch
+
+# Or submit all 5 splits for cross-validated results
+sbatch sbatch_files/run_training_1st_splits.sbatch
+sbatch sbatch_files/run_training_2nd_splits.sbatch
+sbatch sbatch_files/run_training_3rd_splits.sbatch
+sbatch sbatch_files/run_training_4th_splits.sbatch
+sbatch sbatch_files/run_training_5th_splits.sbatch
+```
+
+**Training Strategy:**
+- Use **one split** for initial experimentation or single model training
+- Use **all 5 splits** for robust cross-validated results and performance evaluation
+
+When you submit a job, SLURM will return a job ID (e.g., "Submitted batch job 122345"). Note this job ID for monitoring.
+
+**Before submitting:**
+1. Update the email in the sbatch file: Replace `YOUR_NETID@u.northwestern.edu` with your actual NetID
+2. Verify the account and partition settings match your Quest allocation
+
+### Monitoring Jobs
+```bash
+# Check job status
+squeue --me
+
+# View real-time log output (replace <JOB_ID> with actual job ID from submission)
+tail -f /projects/e32998/MIL_training/logs/training_logs_<JOB_ID>.log
+
+# Cancel a job if needed (replace <JOB_ID> with actual job ID)
+scancel <JOB_ID>
+```
+
+**Note:** Replace `<JOB_ID>` with the actual job ID returned by SLURM when you submit (e.g., if SLURM says "Submitted batch job 122345", use 122345 as the job ID).
+
+### Job Output
+- Logs are written to `/projects/e32998/MIL_training/logs/training_logs_<JOB_ID>.log`
+- Results are saved in the `./runs/` directory within the project folder
 
 ## Output Structure
 
@@ -95,12 +166,28 @@ Contains case IDs for each split:
 - Slice-level attention patterns
 
 **patch_attention/ folder**
-- Top N most attended patches per slice
+- Top N most attended patches per slice (highest/lowest slice-level attention)
 - Bottom N least attended patches per slice
 - Images (after transformation) with attention weights
 
-**stain_attention_distribution.png**
-- Box plot showing attention distribution across stains
+**case_effective_patches/ folder**
+- Top N patches across entire case using effective attention (stain × slice × patch weights)
+- Bottom N patches across entire case using effective attention
+- Provides global view of most important patches per case
+
+**plots/ folder**
+- `effective_patch_attn_distro_case_*.png`: Per-case histograms of effective patch attention
+- Shows distribution and concentration of attention within each case
+
+**slice_attention/ folder**
+- `slice_attn_rankplot_case_*.png`: Per-case slice attention rankings by stain
+- Bar plots showing which slices get most attention within each stain
+- Includes uniform attention reference line
+
+**Analysis CSVs and Summaries**
+- `top_effective_patches_per_case_5.0pct.csv`: Detailed data on top 5% patches per case
+- `top_effective_patches_per_case_summary_5.0pct.txt`: Human-readable summary of top patches
+- Includes stain distribution and slice coverage statistics
 
 ## Data Format
 
@@ -112,7 +199,7 @@ The model expects:
 ## Project Structure
 
 ```
-MIL_trainer_28Oct_Jack/
+MIL_trainer_9Dec_JointFinal/
 ├── config.py              # Configuration and paths
 ├── data_utils.py          # Data loading and preprocessing
 ├── models.py              # Model architectures
@@ -121,5 +208,17 @@ MIL_trainer_28Oct_Jack/
 ├── attention_analysis.py  # Attention visualization
 ├── utils.py               # Helper functions
 ├── main.py                # Main training script
-└── requirements.txt       # Dependencies
+├── requirements.txt       # Dependencies
+├── data_splits_01.npz     # Pre-generated train/val/test splits
+├── data_splits_02.npz
+├── data_splits_03.npz
+├── data_splits_04.npz
+├── data_splits_05.npz
+└── sbatch_files/          # SLURM job scripts
+    ├── README.txt
+    ├── run_training_1st_splits.sbatch
+    ├── run_training_2nd_splits.sbatch
+    ├── run_training_3rd_splits.sbatch
+    ├── run_training_4th_splits.sbatch
+    └── run_training_5th_splits.sbatch
 ```
