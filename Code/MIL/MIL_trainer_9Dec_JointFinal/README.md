@@ -209,11 +209,12 @@ MIL_trainer_9Dec_JointFinal/
 ├── utils.py               # Helper functions
 ├── main.py                # Main training script
 ├── requirements.txt       # Dependencies
-├── data_splits_01.npz     # Pre-generated train/val/test splits
-├── data_splits_02.npz
-├── data_splits_03.npz
-├── data_splits_04.npz
-├── data_splits_05.npz
+├── data_splits/           # Pre-generated train/val/test splits
+│   ├── data_splits_01.npz
+│   ├── data_splits_02.npz
+│   ├── data_splits_03.npz
+│   ├── data_splits_04.npz
+│   └── data_splits_05.npz
 └── sbatch_files/          # SLURM job scripts
     ├── README.txt
     ├── run_training_1st_splits.sbatch
