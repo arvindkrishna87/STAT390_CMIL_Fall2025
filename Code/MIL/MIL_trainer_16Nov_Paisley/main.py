@@ -66,8 +66,8 @@ def parse_args():
     parser.add_argument('--attention_top_n', type=int, default=5,
                        help='Number of top/bottom patches to visualize')
     parser.add_argument('--load_splits', type=str, default=None,
-                       help='Path to data_splits.npz file to load existing splits')
-    
+                        help='Path to data_splits.npz file to load existing splits')
+
     return parser.parse_args()
 
 

@@ -290,6 +290,20 @@ def main():
             epochs=args.epochs,
             start_epoch=start_epoch
         )
+
+    evaluated_best = False
+    if not args.resume and trainer.best_model_state is not None:
+        best_loaded = trainer.load_best_model()
+        evaluated_best = best_loaded
+        if best_loaded and trainer.best_epoch is not None:
+            print(f"\nUsing best epoch {trainer.best_epoch} for evaluation")
+        elif best_loaded:
+            print("\nUsing tracked best weights for evaluation")
+    else:
+        if args.resume:
+            print("\n--resume specified; evaluating with resumed checkpoint weights")
+        else:
+            print("\nProceeding with current weights for evaluation (no best epoch recorded)")
     
     # Evaluate on test set
     print("\n" + "=" * 60)
@@ -318,6 +332,9 @@ def main():
         f.write(f"Test Loss: {test_results['test_loss']:.4f}\n")
         f.write(f"Test Accuracy: {test_results['test_accuracy']:.4f}\n")
         f.write(f"Number of samples: {test_results['num_samples']}\n")
+        if evaluated_best and trainer.best_epoch is not None:
+            f.write(f"Best Epoch: {trainer.best_epoch}\n")
+            f.write(f"Best Validation Loss: {trainer.best_val_loss:.4f}\n")
         if args.resume:
             f.write(f"Checkpoint used: {args.resume}\n")
         f.write(f"\nOutput files:\n")

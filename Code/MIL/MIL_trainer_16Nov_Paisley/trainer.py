@@ -332,12 +332,12 @@ class MILTrainer:
         if save_predictions:
             self._save_predictions_csv(results, output_dir, checkpoint_name)
             self._save_confusion_matrix(results, output_dir)
-        
+
         print(f"\nTest Results:")
         print(f"Test Loss: {avg_loss:.4f}")
         print(f"Test Accuracy: {accuracy:.4f}")
         print(f"Samples: {sample_total}")
-        
+
         return results
     
     def _save_predictions_csv(self, results: Dict[str, Any], output_dir: str = None, 
