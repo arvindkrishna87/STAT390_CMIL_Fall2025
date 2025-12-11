@@ -48,21 +48,22 @@ python main.py \
 
 **Key Arguments:**
 You can specify any combination of these arguments to override the defaults in `config.py`:
-- `--epochs`: Number of training epochs (default: 20)
-- `--lr`: Learning rate (default: 1e-4)
-- `--embed_dim`: Embedding dimension (default: 256)
-- `--per_slice_cap`: Max patches per slice (default: 500)
-- `--max_slices_per_stain`: Max slices per stain (default: 5)
+- `--epochs`: Number of training epochs (default: 30)
+- `--lr`: Learning rate (default: 3e-4)
+- `--embed_dim`: Embedding dimension (default: 512)
+- `--per_slice_cap`: Max patches per slice (default: 800)
+- `--max_slices_per_stain`: Max slices per stain (default: None)
 - `--analyze_attention`: Enable attention analysis and visualization
 - `--attention_top_n`: Number of top/bottom patches to visualize (default: 5)
 - `--load_splits`: Load existing train/val/test splits from .npz file
 - `--eval_only`: Skip training, only evaluate
 - `--resume`: Resume from checkpoint
-- `--batch_size`: Batch size (default: 16)
-- `--weight_decay`: L2 regularization (default: 1e-4)
-- `--dropout`: Dropout rate (default: 0.0)
-- `--patience`: Early stopping patience (default: 10)
-- `--min_delta`: Minimum improvement for early stopping (default: 0.01)
+- `--batch_size`: Batch size (default: 1)
+- `--weight_decay`: L2 regularization (default: 2e-4)
+- `--seed`: Random seed (default: 42)
+
+**Output Directory:**
+The output directory is automatically created with a timestamp in the format `.../run_YYYYMMDD_HHMMSS/` under a base directory, which can be changed by modifying `DATA_PATHS['runs_dir']` in `config.py` (currently set to `/projects/e32998/MIL_training/final_runs`).
 
 ## SLURM Job Management
 
@@ -90,6 +91,7 @@ When you submit a job, SLURM will return a job ID (e.g., "Submitted batch job 12
 **Before submitting:**
 1. Update the email in the sbatch file: Replace `YOUR_NETID@u.northwestern.edu` with your actual NetID
 2. Verify the account and partition settings match your Quest allocation
+3. Modify logging directory if needed: Logs are currently set to `/projects/e32998/MIL_training/logs/` in the sbatch files
 
 ### Monitoring Jobs
 ```bash
@@ -106,8 +108,8 @@ scancel <JOB_ID>
 **Note:** Replace `<JOB_ID>` with the actual job ID returned by SLURM when you submit (e.g., if SLURM says "Submitted batch job 122345", use 122345 as the job ID).
 
 ### Job Output
-- Logs are written to `/projects/e32998/MIL_training/logs/training_logs_<JOB_ID>.log`
-- Results are saved in the `./runs/` directory within the project folder
+- **SLURM logs** are written to `/projects/e32998/MIL_training/logs/training_logs_<JOB_ID>.log` (configured in sbatch files)
+- **Training results** are saved in `/projects/e32998/MIL_training/final_runs/run_YYYYMMDD_HHMMSS/` (configured in config.py)
 
 ## Output Structure
 

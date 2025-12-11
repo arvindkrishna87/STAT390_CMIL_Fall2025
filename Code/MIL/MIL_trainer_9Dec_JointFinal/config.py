@@ -8,7 +8,7 @@ from typing import Tuple
 DATA_PATHS = {
     'labels_csv': '/projects/e32998/MIL_training/case_grade_match.csv',
     'patches_dir': '/projects/e32998/patches',
-    'runs_dir': '/projects/e32998/MIL_training/pres_4_runs'  # Base directory for training runs
+    'runs_dir': '/projects/e32998/MIL_training/final_runs'  # Base directory for training runs
 }
 
 # Model configuration
