@@ -267,8 +267,33 @@ class MILTrainer:
         
         print("\nTraining completed!")
     
+    def _log_classifier_stats(self):
+        """Print mean abs weight and bias of final classifier layer."""
+        classifier = getattr(self.model, 'classifier', None)
+        if classifier is None:
+            print("Classifier stats unavailable: model has no classifier attribute")
+            return
+
+        final_layer = classifier[-1] if isinstance(classifier, nn.Sequential) else classifier
+        if not isinstance(final_layer, nn.Linear):
+            print("Classifier stats unavailable: final module is not nn.Linear")
+            return
+
+        with torch.no_grad():
+            weight_mean = final_layer.weight.detach().abs().mean().item()
+            bias = final_layer.bias.detach() if final_layer.bias is not None else None
+
+        print(f"Classifier Weights Mean: {weight_mean:.6f}")
+        if bias is None:
+            print("Classifier Bias: None")
+        elif bias.numel() == 1:
+            print(f"Classifier Bias: {bias.item():.6f}")
+        else:
+            print(f"Classifier Bias: {bias.cpu().tolist()}")
+    
     def evaluate(self, test_loader: DataLoader, save_predictions: bool = True, 
-                 output_dir: str = None, checkpoint_name: str = None) -> Dict[str, Any]:
+                 output_dir: str = None, checkpoint_name: str = None,
+                 log_classifier_stats: bool = False) -> Dict[str, Any]:
         """
         Evaluate model on test set
         Returns: evaluation metrics
@@ -334,6 +359,9 @@ class MILTrainer:
         print(f"Test Loss: {avg_loss:.4f}")
         print(f"Test Accuracy: {accuracy:.4f}")
         print(f"Samples: {sample_total}")
+        
+        if log_classifier_stats:
+            self._log_classifier_stats()
         
         return results
     

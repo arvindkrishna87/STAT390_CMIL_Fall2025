@@ -67,7 +67,9 @@ def parse_args():
                        help='Number of top/bottom patches to visualize')
     parser.add_argument('--load_splits', type=str, default=None,
                        help='Path to data_splits.npz file to load existing splits')
-    
+    parser.add_argument('--show_classifier_stats', action='store_true',
+                        help='Print classifier weight/bias stats after evaluation')
+
     return parser.parse_args()
 
 
@@ -299,7 +301,8 @@ def main():
         test_loader, 
         save_predictions=True, 
         output_dir=run_dir,
-        checkpoint_name=args.resume if args.resume else None
+        checkpoint_name=args.resume if args.resume else None,
+        log_classifier_stats=args.show_classifier_stats
     )
     
     # Attention analysis if requested
